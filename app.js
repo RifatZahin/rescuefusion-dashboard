@@ -17,9 +17,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const database = getDatabase(app);
 const LIVE_PATH = 'robots/rescuefusion/live';
+const CAMERA_PATH = 'robots/rescuefusion/camera/latest';
 const $ = id => document.getElementById(id);
 const arr = x => Array.isArray(x) ? x.filter(Boolean) : x && typeof x === 'object' ? Object.values(x).filter(Boolean) : [];
-let detach = null, lastLive = null, currentLogs = [], clearThrough = 0, lastSession = null;
+let detach = null, detachCamera = null, cloudFrame = null, lastLive = null, currentLogs = [], clearThrough = 0, lastSession = null;
 let firstEvents = true, lastEventId = 0, notificationsOn = false;
 
 function statusBadge(text, cls='offline') {
@@ -47,6 +48,7 @@ function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot
   placeholder(text);
 }
 function showLoggedOut() {
+  cloudFrame = null; $('cameraStream').hidden = true; $('cameraStream').removeAttribute('src');
   $('loginPanel').hidden = false; $('siteShell').hidden = true;
   $('loginPassword').value = ''; lastLive = null; currentLogs = []; clearThrough = 0;
   lastSession = null; firstEvents = true; lastEventId = 0;
@@ -69,10 +71,15 @@ $('loginForm').addEventListener('submit', async e => {
 $('logoutBtn').onclick = async () => { try { await signOut(auth); } catch { $('topHint').textContent = 'Sign out failed. Retry.'; } };
 onAuthStateChanged(auth, user => {
   if (detach) { detach(); detach = null; }
+  if (detachCamera) { detachCamera(); detachCamera = null; }
   if (!user) { showLoggedOut(); loginMessage('Enter your Firebase email and password.'); return; }
   $('loginPanel').hidden = true; $('siteShell').hidden = false;
   $('signedInAs').textContent = 'Signed in: ' + (user.email || 'Firebase account');
   showWaiting();
+  detachCamera = onValue(ref(database, CAMERA_PATH), snap => displayCloudCamera(snap.val()), error => {
+    $('streamBadge').textContent = 'CAMERA ACCESS ERROR';
+    $('streamNote').textContent = 'Cloud camera read denied. Check /robots/rescuefusion/camera Firebase rules.';
+  });
   detach = onValue(ref(database, LIVE_PATH), snap => receiveLive(snap.val()), error => {
     lastLive = null; statusBadge('DATABASE ACCESS ERROR');
     $('topHint').textContent = error.code === 'PERMISSION_DENIED' || /permission/i.test(error.message || '')
@@ -81,6 +88,39 @@ onAuthStateChanged(auth, user => {
     $('outputStatus').textContent = 'Do not make database public to fix access problems.';
   });
 }, error => { showLoggedOut(); loginMessage('Authentication failure: ' + (error.code || error.message), true); });
+
+
+// Low-rate camera still frames travel PC -> authenticated Firebase -> GitHub Pages.
+// This does NOT use the local MJPEG HTTP stream and is NOT continuous video.
+function displayCloudCamera(snapshot) {
+  const img = $('cameraStream');
+  if (!snapshot || typeof snapshot !== 'object' || snapshot.mime !== 'image/jpeg' ||
+      typeof snapshot.jpeg_base64 !== 'string' || !snapshot.jpeg_base64.startsWith('/9j/') ||
+      snapshot.jpeg_base64.length > 210000) {
+    cloudFrame = null; img.hidden = true; img.removeAttribute('src');
+    $('cameraPlaceholder').hidden = false;
+    $('cameraPlaceholder').textContent = 'Waiting for protected camera snapshots. Start camera_snapshot_relay.py on the PC.';
+    $('streamBadge').textContent = 'CLOUD WAITING';
+    $('streamNote').textContent = 'Cloud snapshots not available yet — live MJPEG is still local-only';
+    return;
+  }
+  const stamp = Number(snapshot.updated_at_ms);
+  if (!Number.isFinite(stamp) || stamp < 1000000000000) return;
+  cloudFrame = {updated_at_ms:stamp, bytes:Number(snapshot.bytes) || 0};
+  img.onload = () => { if(cloudFrame) { img.hidden=false; $('cameraPlaceholder').hidden=true; } };
+  img.onerror = () => {img.hidden=true; $('cameraPlaceholder').hidden=false; $('cameraPlaceholder').textContent='Camera image decode failed.';};
+  img.src='data:image/jpeg;base64,'+snapshot.jpeg_base64;
+  updateCameraAge();
+}
+function updateCameraAge() {
+  if (!cloudFrame || $('siteShell').hidden) return;
+  const ageSec = Math.max(0, Math.floor((Date.now()-cloudFrame.updated_at_ms)/1000));
+  const stale = ageSec > 150;
+  $('streamBadge').textContent=stale?'SNAPSHOT STALE':'CLOUD SNAPSHOT';
+  $('streamBadge').className='tag '+(stale?'yellow':'green');
+  $('streamNote').textContent=`Last protected camera photo: ${ageSec}s ago · ${cloudFrame.bytes} bytes · NOT continuous video`;
+}
+setInterval(updateCameraAge,5000);
 
 // ESP32-CAM remains on private HTTP Wi-Fi; GitHub Pages is HTTPS.
 $('cameraIP').value = localStorage.getItem('rescuefusion_cam_ip') || '';
@@ -92,11 +132,13 @@ function connectCamera() {
   }
   localStorage.setItem('rescuefusion_cam_ip', ip);
   $('openCam').href = `http://${ip}/`; $('openCam').hidden = false;
-  $('cameraStream').hidden = true;
-  $('cameraPlaceholder').hidden = false;
-  $('cameraPlaceholder').textContent = 'Camera is on the local Wi-Fi. A GitHub HTTPS website cannot securely embed this HTTP video. Open the camera webpage on the same Wi-Fi; remote streaming needs a secure relay.';
-  $('streamBadge').textContent = 'LAN ONLY';
-  $('streamNote').textContent = 'Open camera webpage to view local MJPEG2SD video';
+  if (!cloudFrame) {
+    $('cameraStream').hidden = true;
+    $('cameraPlaceholder').hidden = false;
+    $('cameraPlaceholder').textContent = 'Local camera is on Wi-Fi. Cloud snapshots need the PC camera relay.';
+    $('streamBadge').textContent = 'CLOUD WAITING';
+  }
+  $('streamNote').textContent = cloudFrame ? $('streamNote').textContent : 'Open camera webpage on the same Wi-Fi to view original MJPEG2SD video';
 }
 $('connectCam').onclick = connectCamera;
 $('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });

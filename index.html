@@ -44,7 +44,7 @@
       <button type="submit" id="loginButton" class="primary">Sign in to Dashboard</button>
       <p id="loginError" class="auth-message" role="alert">Loading Firebase Authentication...</p>
     </form>
-    <div class="login-note">Robot GPS and live telemetry require authorized access. Camera remains on local Wi-Fi.</div>
+    <div class="login-note">Robot GPS and live telemetry require authorized access. Original MJPEG video stays on local Wi-Fi; protected cloud photos are separate.</div>
   </div>
 </section>
 <div id="siteShell" class="site-shell" hidden>
@@ -60,7 +60,7 @@
 <span class="muted tiny" id="topHint">Firebase connected after sign-in · waiting for PC bridge</span>
 </section>
 <section class="hero grid-hero">
-<article class="card cam-card"><div class="card-head"><h2>LIVE CAMERA</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera stream will appear here once the ESP32-CAM IP is set.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Stream URL not configured</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div></article>
+<article class="card cam-card"><div class="card-head"><h2>CAMERA · CLOUD SNAPSHOTS</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div></article>
 <article class="card detection"><div class="card-head"><h2>HUMAN DETECTION</h2><span class="tag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help">Edge Impulse inference is not yet integrated into the current MJPEG2SD camera firmware.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
 </section>
 <section class="stats">
@@ -71,8 +71,8 @@
 </section>
 <section class="card timeline"><div class="card-head"><h2>EVENT TIMELINE</h2><span class="tiny" id="eventCount">0 events</span></div><div id="events" class="event-list"><p class="help">Events will appear as sensor thresholds or robot states change.</p></div><p class="help footnote">MQ-7 ADC is uncalibrated. Robot GPS is private to authorized accounts. Person detection is not integrated yet.</p></section>
 <section class="card output"><div class="card-head"><div class="output-title"><h2>OUTPUT</h2><span class="tag" id="outputTag">SERIAL MONITOR</span></div><div class="output-actions"><span class="tiny" id="portName">REMOTE · Firebase</span><label class="toggle"><input type="checkbox" id="autoScroll" checked>Auto-scroll</label><button class="ghost" id="copyOutput">Copy output</button><button class="ghost" id="clearOutput">Clear view</button></div></div><div class="terminal" id="serialOutput" role="log" aria-live="off"><div class="placeholder-log">Signed in. Waiting for the PC-to-Firebase bridge to send ESP32 serial output.</div></div><div class="terminal-foot"><span id="outputStatus">Read-only copy of ESP32 DevKit messages sent by PC bridge</span><span id="lineCount">0 lines</span></div></section>
-<footer>RescueFusion · Firebase-authenticated telemetry · Camera stays on LAN · Robot controls not available</footer>
+<footer>RescueFusion · Firebase-authenticated telemetry · Camera snapshots require authorized login · Robot controls not available</footer>
 </main>
 </div>
-<script type="module" src="./app.js?v=3"></script>
+<script type="module" src="./app.js?v=4"></script>
 </body></html>
