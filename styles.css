@@ -19,3 +19,15 @@
 .login-note{font-size:11px;color:#829ec0;margin-top:20px;border-top:1px solid #253b57;padding-top:15px}
 .account-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;width:100%;color:#9fc0e1;font-size:12px;overflow-wrap:anywhere}
 .account-bar .ghost{padding:5px 9px}
+
+
+/* Protected global live-video launcher. Camera snapshots remain in the original card. */
+.global-live-box{margin-top:14px;padding:13px 14px;background:#0b1930;border:1px solid #355174;border-radius:11px}
+.global-live-title{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:9px;font-size:12px;letter-spacing:.05em;color:#d8eaff}
+.global-live-controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.global-live-controls input{flex:1 1 280px;min-width:0;width:100%;padding:11px;border:1px solid #355174;border-radius:8px;background:#061126;color:#e9f3ff;outline:none;font:inherit}
+.global-live-controls input:focus{border-color:#61abea}
+.global-live-controls button{flex:0 0 auto}
+.global-live-hint{font-size:11px;color:#9fc0e1;margin:9px 0 0;overflow-wrap:anywhere}
+.global-live-hint.error{color:#ff9daa}
+@media(max-width:560px){.global-live-controls button{width:100%}}

@@ -142,6 +142,43 @@ function connectCamera() {
 }
 $('connectCam').onclick = connectCamera;
 $('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });
+// Global live video launcher: this only opens the already-authenticated video-only relay.
+// Save on the CURRENT browser/device. Quick-Tunnel hostnames change on restart.
+// The initial link is from the most recently confirmed working tunnel and is temporary.
+const INITIAL_LIVE_VIDEO_URL = 'https://divided-tutorials-analysts-polished.trycloudflare.com';
+const liveVideoInput = $('globalVideoURL');
+const liveVideoHint = $('globalVideoHint');
+try { liveVideoInput.value = localStorage.getItem('rescuefusion_live_video_url') || INITIAL_LIVE_VIDEO_URL; }
+catch { liveVideoInput.value = INITIAL_LIVE_VIDEO_URL; }
+function normalizedProtectedTunnelUrl(input) {
+  try {
+    const u = new URL(input.trim());
+    const parts = u.hostname.toLowerCase().split('.');
+    // Limit opening to HTTPS Cloudflare quick-tunnel hostnames; never accept a local HTTP IP.
+    if (u.protocol !== 'https:' || parts.length !== 3 ||
+        parts[1] !== 'trycloudflare' || parts[2] !== 'com' || !/^[a-z0-9-]+$/.test(parts[0]) ||
+        u.username || u.password || u.port || u.search || u.hash) return null;
+    return u.origin + '/';
+  } catch { return null; }
+}
+$('watchGlobalVideo').onclick = () => {
+  const url = normalizedProtectedTunnelUrl(liveVideoInput.value);
+  if (!url) {
+    liveVideoHint.textContent = 'Enter the current protected HTTPS *.trycloudflare.com tunnel link.';
+    liveVideoHint.className = 'global-live-hint error';
+    return;
+  }
+  try { localStorage.setItem('rescuefusion_live_video_url', url); } catch {}
+  liveVideoInput.value = url;
+  liveVideoHint.textContent = 'Link saved on this device. In the new tab, enter your allowed email OTP, then press Start live stream.';
+  liveVideoHint.className = 'global-live-hint';
+  // This opens on the direct button click, avoiding popup blocking and iframe OTP restrictions.
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+liveVideoInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') $('watchGlobalVideo').click();
+});
+
 $('notifyBtn').onclick = async () => {
   if (!('Notification' in window)) { $('notifyBtn').textContent = 'Alerts unavailable'; return; }
   notificationsOn = await Notification.requestPermission() === 'granted';

@@ -26,8 +26,19 @@
 .login-note{font-size:11px;color:#829ec0;margin-top:20px;border-top:1px solid #253b57;padding-top:15px}
 .account-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;width:100%;color:#9fc0e1;font-size:12px;overflow-wrap:anywhere}
 .account-bar .ghost{padding:5px 9px}
+
+/* Protected global live-video launcher. Camera snapshots remain in the original card. */
+.global-live-box{margin-top:14px;padding:13px 14px;background:#0b1930;border:1px solid #355174;border-radius:11px}
+.global-live-title{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:9px;font-size:12px;letter-spacing:.05em;color:#d8eaff}
+.global-live-controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.global-live-controls input{flex:1 1 280px;min-width:0;width:100%;padding:11px;border:1px solid #355174;border-radius:8px;background:#061126;color:#e9f3ff;outline:none;font:inherit}
+.global-live-controls input:focus{border-color:#61abea}
+.global-live-controls button{flex:0 0 auto}
+.global-live-hint{font-size:11px;color:#9fc0e1;margin:9px 0 0;overflow-wrap:anywhere}
+.global-live-hint.error{color:#ff9daa}
+@media(max-width:560px){.global-live-controls button{width:100%}}
 </style>
-<link rel="stylesheet" href="./styles.css?v=3">
+<link rel="stylesheet" href="./styles.css?v=5">
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
@@ -60,7 +71,15 @@
 <span class="muted tiny" id="topHint">Firebase connected after sign-in · waiting for PC bridge</span>
 </section>
 <section class="hero grid-hero">
-<article class="card cam-card"><div class="card-head"><h2>CAMERA · CLOUD SNAPSHOTS</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div></article>
+<article class="card cam-card"><div class="card-head"><h2>CAMERA · CLOUD SNAPSHOTS</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div>
+<div class="global-live-box">
+  <div class="global-live-title"><strong>GLOBAL LIVE VIDEO</strong><span class="tag green">EMAIL OTP</span></div>
+  <div class="global-live-controls">
+    <input id="globalVideoURL" type="url" inputmode="url" spellcheck="false" autocomplete="off" aria-label="Cloudflare protected live video link" placeholder="https://your-tunnel.trycloudflare.com" />
+    <button id="watchGlobalVideo" type="button" class="primary">▶ Watch Live Video ↗</button>
+  </div>
+  <p id="globalVideoHint" class="global-live-hint" role="status">Video opens in a new tab after Cloudflare OTP. Tunnel link is temporary.</p>
+</div></article>
 <article class="card detection"><div class="card-head"><h2>HUMAN DETECTION</h2><span class="tag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help">Edge Impulse inference is not yet integrated into the current MJPEG2SD camera firmware.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
 </section>
 <section class="stats">
@@ -74,5 +93,5 @@
 <footer>RescueFusion · Firebase-authenticated telemetry · Camera snapshots require authorized login · Robot controls not available</footer>
 </main>
 </div>
-<script type="module" src="./app.js?v=4"></script>
+<script type="module" src="./app.js?v=5"></script>
 </body></html>
