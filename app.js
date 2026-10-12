@@ -142,39 +142,51 @@ function connectCamera() {
 }
 $('connectCam').onclick = connectCamera;
 $('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });
-// Global live video launcher: this only opens the already-authenticated video-only relay.
-// Save on the CURRENT browser/device. Quick-Tunnel hostnames change on restart.
-// The initial link is from the most recently confirmed working tunnel and is temporary.
-const INITIAL_LIVE_VIDEO_URL = 'https://divided-tutorials-analysts-polished.trycloudflare.com';
+// Private or protected HTTPS video launcher. Only HTTPS Tailscale Serve / Cloudflare Quick Tunnels.
+// URL is stored locally in the user's browser, never sent to Firebase.
+const INITIAL_LIVE_VIDEO_URL = 'https://hamidy.tail65670e.ts.net/';
 const liveVideoInput = $('globalVideoURL');
 const liveVideoHint = $('globalVideoHint');
+const liveVideoBadge = $('globalVideoBadge');
 try { liveVideoInput.value = localStorage.getItem('rescuefusion_live_video_url') || INITIAL_LIVE_VIDEO_URL; }
 catch { liveVideoInput.value = INITIAL_LIVE_VIDEO_URL; }
-function normalizedProtectedTunnelUrl(input) {
+function normalizedProtectedVideoUrl(input) {
   try {
     const u = new URL(input.trim());
-    const parts = u.hostname.toLowerCase().split('.');
-    // Limit opening to HTTPS Cloudflare quick-tunnel hostnames; never accept a local HTTP IP.
-    if (u.protocol !== 'https:' || parts.length !== 3 ||
-        parts[1] !== 'trycloudflare' || parts[2] !== 'com' || !/^[a-z0-9-]+$/.test(parts[0]) ||
-        u.username || u.password || u.port || u.search || u.hash) return null;
-    return u.origin + '/';
+    const hostname = u.hostname.toLowerCase();
+    const isTailscale = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.ts\.net$/.test(hostname);
+    const isQuickTunnel = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.trycloudflare\.com$/.test(hostname);
+    // Prevent javascript:, userinfo, non-HTTPS, custom ports, redirects and unrelated URLs.
+    if (u.protocol !== 'https:' || !(isTailscale || isQuickTunnel) ||
+        u.username || u.password || u.port || u.pathname !== '/' || u.search || u.hash) return null;
+    return { url: u.origin + '/', isTailscale };
   } catch { return null; }
 }
+function labelVideoMode(mode) {
+  if (!mode) return;
+  liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'EMAIL OTP';
+}
+labelVideoMode(normalizedProtectedVideoUrl(liveVideoInput.value));
 $('watchGlobalVideo').onclick = () => {
-  const url = normalizedProtectedTunnelUrl(liveVideoInput.value);
-  if (!url) {
-    liveVideoHint.textContent = 'Enter the current protected HTTPS *.trycloudflare.com tunnel link.';
+  const parsed = normalizedProtectedVideoUrl(liveVideoInput.value);
+  if (!parsed) {
+    liveVideoHint.textContent = 'Enter a valid HTTPS Tailscale *.ts.net or protected *.trycloudflare.com root URL.';
     liveVideoHint.className = 'global-live-hint error';
     return;
   }
-  try { localStorage.setItem('rescuefusion_live_video_url', url); } catch {}
-  liveVideoInput.value = url;
-  liveVideoHint.textContent = 'Link saved on this device. In the new tab, enter your allowed email OTP, then press Start live stream.';
+  try { localStorage.setItem('rescuefusion_live_video_url', parsed.url); } catch {}
+  liveVideoInput.value = parsed.url;
+  labelVideoMode(parsed);
+  liveVideoHint.textContent = parsed.isTailscale
+    ? 'Opening private camera in a new tab. Tailscale must be connected on this device, and the PC relay must be running.'
+    : 'Opening protected video in a new tab. Sign in via Cloudflare OTP if required.';
   liveVideoHint.className = 'global-live-hint';
-  // This opens on the direct button click, avoiding popup blocking and iframe OTP restrictions.
-  window.open(url, '_blank', 'noopener,noreferrer');
+  window.open(parsed.url, '_blank', 'noopener,noreferrer');
 };
+liveVideoInput.addEventListener('input', () => {
+  const parsed = normalizedProtectedVideoUrl(liveVideoInput.value);
+  if (parsed) { labelVideoMode(parsed); liveVideoHint.className = 'global-live-hint'; }
+});
 liveVideoInput.addEventListener('keydown', event => {
   if (event.key === 'Enter') $('watchGlobalVideo').click();
 });

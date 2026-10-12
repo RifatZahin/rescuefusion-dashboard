@@ -38,7 +38,7 @@
 .global-live-hint.error{color:#ff9daa}
 @media(max-width:560px){.global-live-controls button{width:100%}}
 </style>
-<link rel="stylesheet" href="./styles.css?v=5">
+<link rel="stylesheet" href="./styles.css?v=6">
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
@@ -73,12 +73,12 @@
 <section class="hero grid-hero">
 <article class="card cam-card"><div class="card-head"><h2>CAMERA · CLOUD SNAPSHOTS</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div>
 <div class="global-live-box">
-  <div class="global-live-title"><strong>GLOBAL LIVE VIDEO</strong><span class="tag green">EMAIL OTP</span></div>
+  <div class="global-live-title"><strong>GLOBAL LIVE VIDEO</strong><span class="tag green" id="globalVideoBadge">TAILSCALE PRIVATE</span></div>
   <div class="global-live-controls">
-    <input id="globalVideoURL" type="url" inputmode="url" spellcheck="false" autocomplete="off" aria-label="Cloudflare protected live video link" placeholder="https://your-tunnel.trycloudflare.com" />
+    <input id="globalVideoURL" type="url" inputmode="url" spellcheck="false" autocomplete="off" aria-label="Private Tailscale or protected Cloudflare video link" placeholder="https://hamidy.tail65670e.ts.net/" />
     <button id="watchGlobalVideo" type="button" class="primary">▶ Watch Live Video ↗</button>
   </div>
-  <p id="globalVideoHint" class="global-live-hint" role="status">Video opens in a new tab after Cloudflare OTP. Tunnel link is temporary.</p>
+  <p id="globalVideoHint" class="global-live-hint" role="status">Private Tailscale camera opens in a new tab; Tailscale must be connected. Protected Cloudflare links also supported.</p>
 </div></article>
 <article class="card detection"><div class="card-head"><h2>HUMAN DETECTION</h2><span class="tag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help">Edge Impulse inference is not yet integrated into the current MJPEG2SD camera firmware.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
 </section>
@@ -93,5 +93,5 @@
 <footer>RescueFusion · Firebase-authenticated telemetry · Camera snapshots require authorized login · Robot controls not available</footer>
 </main>
 </div>
-<script type="module" src="./app.js?v=5"></script>
+<script type="module" src="./app.js?v=6"></script>
 </body></html>
