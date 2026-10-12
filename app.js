@@ -1,126 +1,202 @@
-'use strict';
-const $ = (id) => document.getElementById(id);
-const IS_GITHUB_PAGES = location.hostname.toLowerCase().endsWith('.github.io');
-let lastSeq = 0, entries = [], lastEventID = 0, initialized = false, notificationsOn = false, requestedCam = false;
-const MAX_LINES = 750;
-const validIP = (s) => {const parts=s.split('.');return parts.length===4&&parts.every(p=>/^\d{1,3}$/.test(p)&&Number(p)<=255);};
-const formatTime = seconds => {if(!Number.isFinite(seconds)||seconds<0)return '—'; let n=Math.floor(seconds);return `${Math.floor(n/3600)}h ${String(Math.floor((n%3600)/60)).padStart(2,'0')}m ${String(n%60).padStart(2,'0')}s`;};
-function cameraConnect(){
-  const ip=$('cameraIP').value.trim();
-  if(!validIP(ip)){$('streamNote').textContent='Enter a valid camera IPv4 address, e.g. 192.168.0.101';return;}
-  localStorage.setItem('rescuefusion_cam_ip',ip);
-  $('streamBadge').textContent='CONNECTING'; $('streamNote').textContent=`Trying http://${ip}/sustain?stream=0`;
-  $('cameraPlaceholder').textContent='Connecting to ESP32-CAM stream...'; $('cameraPlaceholder').hidden=false;
-  const img=$('cameraStream');img.hidden=true;requestedCam=true;
-  $('openCam').hidden=false;$('openCam').href=`http://${ip}/`;
-  if(location.protocol==='https:'){
-    $('streamBadge').textContent='LOCAL ONLY';
-    $('streamNote').textContent='HTTPS website cannot embed the local HTTP camera stream';
-    $('cameraPlaceholder').textContent='ESP32-CAM runs on your local Wi-Fi. Use “Open camera webpage” while connected to the same network. Remote streaming needs a secure relay.';
-    return;
-  }
-  img.onload=()=>{img.hidden=false;$('cameraPlaceholder').hidden=true;$('streamBadge').textContent='LIVE';$('streamNote').textContent=`MJPEG2SD stream · ${ip}`;};
-  img.onerror=()=>{img.hidden=true;$('cameraPlaceholder').hidden=false;$('cameraPlaceholder').textContent='Stream not available at this endpoint. Use “Open camera webpage” to check live video.';$('streamBadge').textContent='STREAM ERROR';$('streamNote').textContent='Check camera power, current IP, and Wi-Fi';};
-  img.src=`http://${ip}/sustain?stream=0&_=${Date.now()}`;
-}
-$('connectCam').onclick=cameraConnect;
-$('cameraIP').addEventListener('keydown',e=>{if(e.key==='Enter')cameraConnect();});
-$('cameraIP').value=localStorage.getItem('rescuefusion_cam_ip')||'';
-$('notifyBtn').onclick=async()=>{
-  if(!('Notification' in window)){$('notifyBtn').textContent='Notifications unavailable';return;}
-  const permission=await Notification.requestPermission();
-  notificationsOn=permission==='granted';
-  $('notifyBtn').textContent=notificationsOn?'Notifications enabled':'Notifications blocked';
+// RescueFusion: GitHub Pages Firebase authenticated read-only dashboard.
+// Firebase client apiKey is PUBLIC configuration, never a service-account secret.
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: 'AIzaSyBo_O0p6p_7yNUK5al47JAT-e7m2AImmZk',
+  authDomain: 'rescuefusion.firebaseapp.com',
+  databaseURL: 'https://rescuefusion-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'rescuefusion',
+  storageBucket: 'rescuefusion.firebasestorage.app',
+  messagingSenderId: '178684140045',
+  appId: '1:178684140045:web:7436750276f1bfafbb1344'
 };
-$('autoScroll').checked=true;
-$('clearOutput').onclick=()=>{entries=[];lastSeq=Number(lastSeq)||0;$('serialOutput').replaceChildren();$('lineCount').textContent='0 lines (view cleared)';};
-$('copyOutput').onclick=async()=>{const text=entries.map(x=>`[${x.time}] ${x.text}`).join('\n');try{await navigator.clipboard.writeText(text);$('copyOutput').textContent='Copied';setTimeout(()=>$('copyOutput').textContent='Copy output',1100);}catch(e){$('copyOutput').textContent='Copy unavailable';}};
-function updateSnapshot(s,now){
-  const live=s.serial_connected&&s.last_line_at&&(now-s.last_line_at)<15;
-  const badge=$('onlineBadge'); badge.className='pill '+(s.demo?'demo':live?'online':'offline');
-  badge.lastElementChild.textContent=s.demo?'DEMO · no robot':live?'DevKit online':'DevKit offline';
-  $('portName').textContent=`${s.port||'COM4'} · 115200 baud`;
-  $('topHint').textContent=s.demo?'Synthetic data only':live?'Local serial data updating':s.serial_error?`Serial: ${s.serial_error}`:'Waiting for DevKit data';
-  $('outputStatus').textContent=s.demo?'DEMO mode — generated lines are not real measurements':live?'Read-only live copy of ESP32 DevKit serial messages':'Serial offline — close Arduino Serial Monitor / check COM port';
-  if(s.gps_valid&&s.gps_lat!==null&&s.gps_lng!==null&&s.gps_seen_at&&now-s.gps_seen_at<10){
-    $('gpsTag').textContent='VALID FIX';$('gpsTag').className='tag green';
-    $('gpsValue').textContent=`${s.gps_lat.toFixed(6)}, ${s.gps_lng.toFixed(6)}`;
-    $('gpsExtra').textContent=`Robot GPS position · ${s.gps_sats??'?'} satellites`;
-    $('mapLink').hidden=false;$('mapLink').href=`https://www.google.com/maps?q=${s.gps_lat},${s.gps_lng}`;
-  }else{$('gpsTag').textContent='NO FRESH FIX';$('gpsTag').className='tag';$('gpsValue').textContent='—';$('gpsExtra').textContent=`Waiting for fresh fix · satellites: ${s.gps_sats??'—'}`;$('mapLink').hidden=true;}
-  $('obstacleValue').textContent=s.front_cm==null?'—':s.front_cm.toFixed(1);
-  $('obstacleTag').textContent=s.front_cm==null?'NO DATA':s.front_cm<=20?'NEAR':'CLEAR';
-  $('obstacleTag').className='tag '+(s.front_cm!=null&&s.front_cm<=20?'red':'');
-  $('gasValue').textContent=s.mq7_raw??'—';$('gasTag').textContent=s.buzzer?'ALERT':'RAW ADC';$('gasTag').className='tag '+(s.buzzer?'red':'');
-  $('cameraValue').textContent=s.camera_last_http===null?'—':`HTTP ${s.camera_last_http}`;
-  $('cameraTag').textContent=s.camera_last_http===null?'NOT TESTED':s.camera_last_http===200?'LAST OK':'LAST FAILED';
-  $('cameraTag').className='tag '+(s.camera_last_http===200?'green':s.camera_last_http!=null?'red':'');
-  $('uptimeValue').textContent=s.session_started_at&&s.serial_connected?formatTime(now-s.session_started_at):'—';
-  $('upTag').textContent=s.demo?'DEMO':'LOCAL';
-  $('humanValue').textContent='Waiting';
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const database = getDatabase(app);
+const LIVE_PATH = 'robots/rescuefusion/live';
+const $ = id => document.getElementById(id);
+const arr = x => Array.isArray(x) ? x.filter(Boolean) : x && typeof x === 'object' ? Object.values(x).filter(Boolean) : [];
+let detach = null, lastLive = null, currentLogs = [], clearThrough = 0, lastSession = null;
+let firstEvents = true, lastEventId = 0, notificationsOn = false;
+
+function statusBadge(text, cls='offline') {
+  const el = $('onlineBadge'); el.className = 'pill ' + cls; el.lastElementChild.textContent = text;
 }
-function addLogs(logs){
-  const terminal=$('serialOutput');
-  if(!logs.length)return;
-  if(terminal.querySelector('.placeholder-log'))terminal.replaceChildren();
+function loginMessage(text, isError=false) {
+  $('loginError').textContent = text; $('loginError').className = 'auth-message' + (isError ? ' error' : '');
+}
+function placeholder(text) {
+  $('serialOutput').replaceChildren();
+  const div = document.createElement('div'); div.className = 'placeholder-log'; div.textContent = text;
+  $('serialOutput').appendChild(div); $('lineCount').textContent = '0 lines';
+}
+function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot data.') {
+  statusBadge('CLOUD READY · ROBOT WAITING'); $('topHint').textContent = text;
+  $('outputStatus').textContent = text; $('outputTag').textContent = 'CLOUD WAITING';
+  $('portName').textContent = 'REMOTE · FIREBASE';
+  $('gpsValue').textContent = '—'; $('gpsTag').textContent = 'NO DATA';
+  $('gpsExtra').textContent = 'Waiting for robot GPS telemetry.'; $('mapLink').hidden = true;
+  $('obstacleValue').textContent = '—'; $('obstacleTag').textContent = 'NO DATA';
+  $('gasValue').textContent = '—'; $('gasTag').textContent = 'NO DATA';
+  $('cameraValue').textContent = '—'; $('cameraTag').textContent = 'NO DATA';
+  $('uptimeValue').textContent = '—'; $('upTag').textContent = 'REMOTE';
+  $('humanValue').textContent = 'Waiting'; $('events').replaceChildren(); $('eventCount').textContent = '0 events';
+  placeholder(text);
+}
+function showLoggedOut() {
+  $('loginPanel').hidden = false; $('siteShell').hidden = true;
+  $('loginPassword').value = ''; lastLive = null; currentLogs = []; clearThrough = 0;
+  lastSession = null; firstEvents = true; lastEventId = 0;
+}
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault(); $('loginButton').disabled = true; loginMessage('Signing in...');
+  const email = $('loginEmail').value.trim(), password = $('loginPassword').value;
+  try {
+    await setPersistence(auth, browserSessionPersistence);
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (err) {
+    const code = err?.code || '';
+    loginMessage(code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found'
+      ? 'Email or password is incorrect.'
+      : code === 'auth/network-request-failed' ? 'Network error: check Internet connection.'
+      : code === 'auth/too-many-requests' ? 'Too many login attempts; please wait.'
+      : 'Login error: ' + (code || 'unknown'), true);
+  } finally { $('loginButton').disabled = false; $('loginPassword').value = ''; }
+});
+$('logoutBtn').onclick = async () => { try { await signOut(auth); } catch { $('topHint').textContent = 'Sign out failed. Retry.'; } };
+onAuthStateChanged(auth, user => {
+  if (detach) { detach(); detach = null; }
+  if (!user) { showLoggedOut(); loginMessage('Enter your Firebase email and password.'); return; }
+  $('loginPanel').hidden = true; $('siteShell').hidden = false;
+  $('signedInAs').textContent = 'Signed in: ' + (user.email || 'Firebase account');
+  showWaiting();
+  detach = onValue(ref(database, LIVE_PATH), snap => receiveLive(snap.val()), error => {
+    lastLive = null; statusBadge('DATABASE ACCESS ERROR');
+    $('topHint').textContent = error.code === 'PERMISSION_DENIED' || /permission/i.test(error.message || '')
+      ? 'Access denied. Check the UID in your Firebase Database Rules.'
+      : 'Firebase read error: ' + (error.message || 'unknown');
+    $('outputStatus').textContent = 'Do not make database public to fix access problems.';
+  });
+}, error => { showLoggedOut(); loginMessage('Authentication failure: ' + (error.code || error.message), true); });
+
+// ESP32-CAM remains on private HTTP Wi-Fi; GitHub Pages is HTTPS.
+$('cameraIP').value = localStorage.getItem('rescuefusion_cam_ip') || '';
+function connectCamera() {
+  const ip = $('cameraIP').value.trim();
+  const p = ip.split('.');
+  if (p.length !== 4 || !p.every(v => /^\d{1,3}$/.test(v) && Number(v) <= 255)) {
+    $('streamNote').textContent = 'Enter a valid IPv4 address.'; return;
+  }
+  localStorage.setItem('rescuefusion_cam_ip', ip);
+  $('openCam').href = `http://${ip}/`; $('openCam').hidden = false;
+  $('cameraStream').hidden = true;
+  $('cameraPlaceholder').hidden = false;
+  $('cameraPlaceholder').textContent = 'Camera is on the local Wi-Fi. A GitHub HTTPS website cannot securely embed this HTTP video. Open the camera webpage on the same Wi-Fi; remote streaming needs a secure relay.';
+  $('streamBadge').textContent = 'LAN ONLY';
+  $('streamNote').textContent = 'Open camera webpage to view local MJPEG2SD video';
+}
+$('connectCam').onclick = connectCamera;
+$('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });
+$('notifyBtn').onclick = async () => {
+  if (!('Notification' in window)) { $('notifyBtn').textContent = 'Alerts unavailable'; return; }
+  notificationsOn = await Notification.requestPermission() === 'granted';
+  $('notifyBtn').textContent = notificationsOn ? 'Tab alerts enabled' : 'Alerts blocked';
+};
+$('clearOutput').onclick = () => {
+  clearThrough = Math.max(clearThrough, ...currentLogs.map(x => Number(x.seq) || 0), 0);
+  currentLogs = []; $('serialOutput').replaceChildren(); $('lineCount').textContent = '0 lines (view cleared)';
+};
+$('copyOutput').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(currentLogs.map(x => `[${x.time || '--'}] ${x.text || ''}`).join('\n'));
+    $('copyOutput').textContent = 'Copied';
+    setTimeout(() => $('copyOutput').textContent = 'Copy output', 1200);
+  } catch { $('copyOutput').textContent = 'Copy unavailable'; }
+};
+function duration(t) {
+  if (!Number.isFinite(t) || t < 0) return '—';
+  const n = Math.floor(t);
+  return `${Math.floor(n/3600)}h ${String(Math.floor((n%3600)/60)).padStart(2,'0')}m ${String(n%60).padStart(2,'0')}s`;
+}
+function drawStatus(data) {
+  const s = data.status || {}, now = Date.now()/1000;
+  const bridgeFresh = Number(data.updated_at_ms) > 0 && (Date.now()-Number(data.updated_at_ms)) < 30000 && (Date.now()-Number(data.updated_at_ms)) > -60000;
+  const usbFresh = s.serial_connected === true && Number(s.last_line_at) > 0 && now-Number(s.last_line_at) < 25;
+  const real = bridgeFresh && usbFresh && !s.demo;
+  statusBadge(s.demo ? 'DEMO · NOT ROBOT' : real ? 'DEVKIT ONLINE · CLOUD LIVE' : bridgeFresh ? 'BRIDGE ONLINE · DEVKIT OFFLINE' : 'BRIDGE OFFLINE / STALE', s.demo ? 'demo' : real ? 'online' : 'offline');
+  $('topHint').textContent = s.demo ? 'Demo data: not real telemetry.' : real ? 'Live PC USB → Firebase telemetry' : bridgeFresh ? 'Bridge connected. Waiting for serial data.' : 'No recent cloud update. Check PC bridge.';
+  $('outputTag').textContent = real ? 'CLOUD LIVE' : bridgeFresh ? 'CONNECTED' : 'STALE';
+  $('outputStatus').textContent = bridgeFresh ? 'Read-only ESP32 DevKit serial logs, forwarded by PC' : 'Cloud data may be stale; check PC bridge';
+  $('portName').textContent = `${s.port || 'COM4'} · 115200 baud · cloud`;
+  const gpsFresh = real && s.gps_valid === true && Number(s.gps_seen_at) > 0 && now-Number(s.gps_seen_at) < 15;
+  const lat=Number(s.gps_lat), lng=Number(s.gps_lng);
+  if (gpsFresh && Number.isFinite(lat) && Number.isFinite(lng) && s.gps_lat !== null && s.gps_lng !== null) {
+    $('gpsTag').textContent = 'VALID FIX'; $('gpsTag').className = 'tag green';
+    $('gpsValue').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    $('gpsExtra').textContent = `Robot GPS · ${s.gps_sats ?? '?'} satellites`;
+    $('mapLink').href = `https://www.google.com/maps?q=${lat},${lng}`; $('mapLink').hidden = false;
+  } else {
+    $('gpsTag').textContent = 'NO FRESH FIX'; $('gpsTag').className = 'tag';
+    $('gpsValue').textContent = '—'; $('gpsExtra').textContent = `Waiting for fresh GPS fix · ${s.gps_sats ?? '—'} satellites`;
+    $('mapLink').hidden = true;
+  }
+  const front = real && s.front_cm != null ? Number(s.front_cm) : NaN;
+  $('obstacleValue').textContent = Number.isFinite(front) ? front.toFixed(1) : '—';
+  $('obstacleTag').textContent = !Number.isFinite(front) ? 'NO DATA' : front <= 20 ? 'NEAR' : 'CLEAR';
+  $('obstacleTag').className = 'tag' + (Number.isFinite(front) && front <= 20 ? ' red' : '');
+  $('gasValue').textContent = real && s.mq7_raw != null ? s.mq7_raw : '—';
+  $('gasTag').textContent = !real ? 'NO DATA' : s.buzzer ? 'TEST ALERT' : 'RAW ADC';
+  $('gasTag').className = 'tag' + (real && s.buzzer ? ' red' : '');
+  const http = real ? s.camera_last_http : null;
+  $('cameraValue').textContent = http == null ? '—' : `HTTP ${http}`;
+  $('cameraTag').textContent = http == null ? 'NOT TESTED' : http === 200 ? 'LAST OK' : 'LAST FAILED';
+  $('cameraTag').className = 'tag' + (http === 200 ? ' green' : http != null ? ' red' : '');
+  $('uptimeValue').textContent = real && Number(s.session_started_at) ? duration(now-Number(s.session_started_at)) : '—';
+  $('upTag').textContent = 'PC SESSION';
+  $('humanValue').textContent = 'Waiting'; // AI inference not available
+}
+function drawLogs(raw) {
+  currentLogs = arr(raw).filter(x => Number(x.seq) > clearThrough).slice(-120);
+  const el = $('serialOutput'); el.replaceChildren();
+  if (!currentLogs.length) { placeholder('No new ESP32 serial output sent to Firebase yet.'); return; }
   const frag=document.createDocumentFragment();
-  for(const item of logs){
-    entries.push(item);const div=document.createElement('div');
-    const text=item.text; div.className='log-line'+(/\bWARN\b|\bERROR\b|\bSTOP:|\bBLOCKED\b|\bFAULT\b|HTTP: -\d+/.test(text)?' warn':/HTTP:\s*200|MOTOR FORWARD|WiFi connected/i.test(text)?' good':'');
-    const ts=document.createElement('span');ts.className='log-ts';ts.textContent=`[${item.time}]`;
-    div.appendChild(ts);div.appendChild(document.createTextNode(text));frag.appendChild(div);
+  for (const item of currentLogs) {
+    const t = String(item.text || '').slice(0,1500);
+    const div=document.createElement('div');
+    div.className='log-line' + (/\bWARN\b|\bERROR\b|\bSTOP:|\bBLOCKED\b|\bFAULT\b/.test(t) ? ' warn' : /HTTP:\s*200|MOTOR FORWARD|WiFi connected/i.test(t) ? ' good' : '');
+    const stamp=document.createElement('span'); stamp.className='log-ts'; stamp.textContent=`[${String(item.time || '--')}]`;
+    div.append(stamp,document.createTextNode(t)); frag.appendChild(div);
   }
-  terminal.appendChild(frag);
-  while(entries.length>MAX_LINES){entries.shift();terminal.firstElementChild?.remove();}
-  $('lineCount').textContent=`${entries.length} lines shown`;
-  if($('autoScroll').checked)terminal.scrollTop=terminal.scrollHeight;
+  el.appendChild(frag); $('lineCount').textContent=`${currentLogs.length} lines shown`;
+  if ($('autoScroll').checked) el.scrollTop = el.scrollHeight;
 }
-function displayEvents(eventList){
-  $('eventCount').textContent=`${eventList.length} recent events`;
-  const host=$('events');host.replaceChildren();
-  if(eventList.length===0){const p=document.createElement('p');p.className='help';p.textContent='Events will appear as sensor thresholds or robot states change.';host.appendChild(p);return;}
-  for(const item of eventList.slice(0,14)){
-    const e=document.createElement('div');e.className=`event ${item.kind}`;
-    const ts=document.createElement('span');ts.className='event-time';ts.textContent=item.time;
-    const msg=document.createElement('span');msg.className='event-message';msg.textContent=item.message;
-    e.append(ts,msg);host.appendChild(e);
+function drawEvents(raw) {
+  const items=arr(raw).slice(0,14), host=$('events'); host.replaceChildren();
+  $('eventCount').textContent=`${items.length} recent events`;
+  for (const item of items) {
+    const div=document.createElement('div'); div.className='event '+(['warning','robot','info'].includes(item.kind) ? item.kind : 'info');
+    const stamp=document.createElement('span'); stamp.className='event-time'; stamp.textContent=String(item.time || '');
+    const message=document.createElement('span'); message.className='event-message'; message.textContent=String(item.message || '').slice(0,500);
+    div.append(stamp,message); host.appendChild(div);
   }
-  if(initialized&&notificationsOn){
-    for(const item of eventList.slice().reverse().filter(x=>x.id>lastEventID&&x.kind==='warning')){
-      try{new Notification('RescueFusion Alert',{body:item.message});}catch(e){}
+  if (!items.length) { const p=document.createElement('p'); p.className='help'; p.textContent='Waiting for robot events.'; host.appendChild(p); }
+  const highest=Math.max(0,...items.map(x => Number(x.id) || 0));
+  if (!firstEvents && notificationsOn && highest > lastEventId) {
+    for (const x of items.filter(v => Number(v.id)>lastEventId && v.kind==='warning')) {
+      try { new Notification('RescueFusion sensor event', {body: String(x.message).slice(0,180)}); } catch { /* browser may block */ }
     }
   }
-  lastEventID=Math.max(lastEventID,...eventList.map(x=>x.id),0);
+  firstEvents=false; lastEventId=Math.max(lastEventId,highest);
 }
-let busy=false;
-async function poll(){
-  if(busy)return;busy=true;
-  try{
-    const response=await fetch(`./api/poll?after=${lastSeq}`,{cache:'no-store'});
-    if(!response.ok)throw Error('HTTP '+response.status);
-    const data=await response.json();
-    updateSnapshot(data.state,data.server_at);
-    addLogs(data.logs);
-    displayEvents(data.events);
-    lastSeq=data.last_seq;
-    initialized=true;
-  }catch(e){$('onlineBadge').className='pill offline';$('onlineBadge').lastElementChild.textContent='Dashboard server offline';$('topHint').textContent='Cannot reach local Python server';}
-  finally{busy=false;}
+function receiveLive(data) {
+  if (!data || typeof data !== 'object') { lastLive=null; showWaiting(); return; }
+  const session=data.status?.session_started_at ?? null;
+  if (lastSession !== session) { lastSession=session; clearThrough=0; firstEvents=true; lastEventId=0; }
+  lastLive=data;
+  drawStatus(data); drawLogs(data.output); drawEvents(data.events);
 }
-function showCloudPending(){
-  $('onlineBadge').className='pill offline';
-  $('onlineBadge').lastElementChild.textContent='CLOUD NOT CONNECTED';
-  $('topHint').textContent='GitHub Pages is online. Firebase live telemetry is not connected yet.';
-  $('outputTag').textContent='CLOUD PENDING';
-  $('portName').textContent='REMOTE · NO USB ACCESS';
-  $('outputStatus').textContent='Live Arduino output requires the upcoming PC-to-Firebase bridge.';
-  $('serialOutput').replaceChildren();
-  const message=document.createElement('div');
-  message.className='placeholder-log';
-  message.textContent='Your website is published successfully. Remote live logs, GPS and sensors will appear here after Firebase is configured and the PC bridge is running. For live USB readings now, continue using http://127.0.0.1:8765 on the connected PC.';
-  $('serialOutput').appendChild(message);
-  $('notifyBtn').disabled=true;
-  $('notifyBtn').textContent='Cloud alerts pending';
-}
-if(IS_GITHUB_PAGES){showCloudPending();}
-else{poll();setInterval(poll,900);}
+// If the bridge stops and Firebase no longer changes, stale data must not appear online.
+setInterval(() => { if (lastLive && !$('siteShell').hidden) drawStatus(lastLive); }, 5000);
