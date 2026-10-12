@@ -22,6 +22,8 @@ const $ = id => document.getElementById(id);
 const arr = x => Array.isArray(x) ? x.filter(Boolean) : x && typeof x === 'object' ? Object.values(x).filter(Boolean) : [];
 let detach = null, detachCamera = null, cloudFrame = null, lastLive = null, currentLogs = [], clearThrough = 0, lastSession = null;
 let firstEvents = true, lastEventId = 0, notificationsOn = false;
+let activeCameraPane = 'snapshot'; // switches to embedded live after Firebase owner sign-in
+let inlineLastFrameTime = 0;
 
 function statusBadge(text, cls='offline') {
   const el = $('onlineBadge'); el.className = 'pill ' + cls; el.lastElementChild.textContent = text;
@@ -48,6 +50,7 @@ function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot
   placeholder(text);
 }
 function showLoggedOut() {
+  stopInlineCamera();
   cloudFrame = null; $('cameraStream').hidden = true; $('cameraStream').removeAttribute('src');
   $('loginPanel').hidden = false; $('siteShell').hidden = true;
   $('loginPassword').value = ''; lastLive = null; currentLogs = []; clearThrough = 0;
@@ -76,8 +79,9 @@ onAuthStateChanged(auth, user => {
   $('loginPanel').hidden = true; $('siteShell').hidden = false;
   $('signedInAs').textContent = 'Signed in: ' + (user.email || 'Firebase account');
   showWaiting();
+  setCameraPane('live');
   detachCamera = onValue(ref(database, CAMERA_PATH), snap => displayCloudCamera(snap.val()), error => {
-    $('streamBadge').textContent = 'CAMERA ACCESS ERROR';
+    if (activeCameraPane !== 'live') $('streamBadge').textContent = 'CAMERA ACCESS ERROR';
     $('streamNote').textContent = 'Cloud camera read denied. Check /robots/rescuefusion/camera Firebase rules.';
   });
   detach = onValue(ref(database, LIVE_PATH), snap => receiveLive(snap.val()), error => {
@@ -100,7 +104,7 @@ function displayCloudCamera(snapshot) {
     cloudFrame = null; img.hidden = true; img.removeAttribute('src');
     $('cameraPlaceholder').hidden = false;
     $('cameraPlaceholder').textContent = 'Waiting for protected camera snapshots. Start camera_snapshot_relay.py on the PC.';
-    $('streamBadge').textContent = 'CLOUD WAITING';
+    if (activeCameraPane !== 'live') $('streamBadge').textContent = 'CLOUD WAITING';
     $('streamNote').textContent = 'Cloud snapshots not available yet — live MJPEG is still local-only';
     return;
   }
@@ -116,8 +120,10 @@ function updateCameraAge() {
   if (!cloudFrame || $('siteShell').hidden) return;
   const ageSec = Math.max(0, Math.floor((Date.now()-cloudFrame.updated_at_ms)/1000));
   const stale = ageSec > 150;
-  $('streamBadge').textContent=stale?'SNAPSHOT STALE':'CLOUD SNAPSHOT';
-  $('streamBadge').className='tag '+(stale?'yellow':'green');
+  if (activeCameraPane !== 'live') {
+    $('streamBadge').textContent=stale?'SNAPSHOT STALE':'CLOUD SNAPSHOT';
+    $('streamBadge').className='tag '+(stale?'yellow':'green');
+  }
   $('streamNote').textContent=`Last protected camera photo: ${ageSec}s ago · ${cloudFrame.bytes} bytes · NOT continuous video`;
 }
 setInterval(updateCameraAge,5000);
@@ -136,7 +142,7 @@ function connectCamera() {
     $('cameraStream').hidden = true;
     $('cameraPlaceholder').hidden = false;
     $('cameraPlaceholder').textContent = 'Local camera is on Wi-Fi. Cloud snapshots need the PC camera relay.';
-    $('streamBadge').textContent = 'CLOUD WAITING';
+    if (activeCameraPane !== 'live') $('streamBadge').textContent = 'CLOUD WAITING';
   }
   $('streamNote').textContent = cloudFrame ? $('streamNote').textContent : 'Open camera webpage on the same Wi-Fi to view original MJPEG2SD video';
 }
@@ -167,6 +173,94 @@ function labelVideoMode(mode) {
   liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'EMAIL OTP';
 }
 labelVideoMode(normalizedProtectedVideoUrl(liveVideoInput.value));
+
+// Embedded viewer is deliberately confined to our Tailscale Serve host.
+// The /embed path is the only resource the updated PC relay permits GitHub Pages to frame.
+const inlineFrame = $('inlineLiveFrame');
+const inlinePane = $('inlineLivePane');
+const inlineNote = $('inlineLiveNote');
+function stopInlineCamera() {
+  inlineFrame.removeAttribute('src'); // stop polling and release downstream requests
+  inlineLastFrameTime = 0;
+}
+function setInlineCameraNote(text, state='') {
+  inlineNote.textContent = text;
+  inlineNote.className = 'inline-live-note' + (state ? ' '+state : '');
+}
+function setCameraPane(which) {
+  if (which !== 'live' && which !== 'snapshot') return;
+  activeCameraPane = which;
+  const live = which === 'live';
+  inlinePane.hidden = !live;
+  $('snapshotCameraPane').hidden = live;
+  $('selectLiveView').classList.toggle('cam-view-active', live);
+  $('selectSnapshotView').classList.toggle('cam-view-active', !live);
+  $('selectLiveView').setAttribute('aria-pressed',String(live));
+  $('selectSnapshotView').setAttribute('aria-pressed',String(!live));
+  if (!live) {
+    stopInlineCamera();
+    updateCameraAge();
+    if (!cloudFrame) {
+      $('streamBadge').textContent = 'CLOUD WAITING';
+      $('streamBadge').className = 'tag yellow';
+    }
+    return;
+  }
+  $('streamBadge').textContent = 'PRIVATE · CONNECTING';
+  $('streamBadge').className = 'tag';
+  const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
+  if (!parsed || !parsed.isTailscale) {
+    stopInlineCamera();
+    setInlineCameraNote('For an in-panel live view, enter your private HTTPS *.ts.net Tailscale Serve address below. Cloudflare links are supported in a new tab.','error');
+    $('streamBadge').textContent = 'TAILSCALE NEEDED';
+    return;
+  }
+  setInlineCameraNote('Connecting to private video. This device must have Tailscale connected; the PC Relay v3.1 must be running.');
+  // Do not insert arbitrary remote pages into the dashboard; use the root-only validated Tailscale host.
+  const endpoint=parsed.url+'embed';
+  if (inlineFrame.getAttribute('src')!==endpoint) inlineFrame.src=endpoint;
+}
+$('selectLiveView').onclick=()=>setCameraPane('live');
+$('selectSnapshotView').onclick=()=>setCameraPane('snapshot');
+$('showInlineGlobalVideo').onclick=()=>{
+  const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
+  if (!parsed || !parsed.isTailscale) {
+    liveVideoHint.textContent='Inline video requires a valid HTTPS Tailscale *.ts.net root URL. Use Watch in New Tab for Cloudflare.';
+    liveVideoHint.className='global-live-hint error';
+    return;
+  }
+  try {localStorage.setItem('rescuefusion_live_video_url', parsed.url);} catch {}
+  liveVideoInput.value=parsed.url;
+  labelVideoMode(parsed);
+  liveVideoHint.textContent='Private video opening inside the Camera box above. Your device must be connected to Tailscale.';
+  liveVideoHint.className='global-live-hint';
+  setCameraPane('live');
+  $('inlineLivePane').scrollIntoView({block:'nearest',behavior:'smooth'});
+};
+window.addEventListener('message',(event)=>{
+  const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
+  if (activeCameraPane!=='live' || !parsed || !parsed.isTailscale ||
+      event.origin !== new URL(parsed.url).origin || event.source !== inlineFrame.contentWindow ||
+      !event.data || event.data.type !== 'rescuefusion-camera-embedded') return;
+  if(event.data.state==='live') {
+    inlineLastFrameTime=Date.now();
+    $('streamBadge').textContent='PRIVATE LIVE';
+    $('streamBadge').className='tag green';
+    setInlineCameraNote('Live camera in Dashboard · Tailscale private HTTPS · about 2 FPS','connected');
+  } else if (event.data.state==='waiting' || event.data.state==='reconnecting') {
+    $('streamBadge').textContent='VIDEO RETRYING';
+    $('streamBadge').className='tag yellow';
+    setInlineCameraNote('Waiting for a fresh camera frame. Check Tailscale connection, relay CMD and /health.','error');
+  }
+});
+setInterval(()=>{
+  if (activeCameraPane==='live' && inlineLastFrameTime && Date.now()-inlineLastFrameTime>12000) {
+    $('streamBadge').textContent='VIDEO STALE';
+    $('streamBadge').className='tag yellow';
+    setInlineCameraNote('No new video frame for 12+ seconds. Check PC Relay, Tailscale and camera Wi-Fi.','error');
+  }
+},3000);
+
 $('watchGlobalVideo').onclick = () => {
   const parsed = normalizedProtectedVideoUrl(liveVideoInput.value);
   if (!parsed) {
@@ -178,7 +272,7 @@ $('watchGlobalVideo').onclick = () => {
   liveVideoInput.value = parsed.url;
   labelVideoMode(parsed);
   liveVideoHint.textContent = parsed.isTailscale
-    ? 'Opening private camera in a new tab. Tailscale must be connected on this device, and the PC relay must be running.'
+    ? 'Opening the same private camera in a new tab (fallback if embedding is blocked).'
     : 'Opening protected video in a new tab. Sign in via Cloudflare OTP if required.';
   liveVideoHint.className = 'global-live-hint';
   window.open(parsed.url, '_blank', 'noopener,noreferrer');

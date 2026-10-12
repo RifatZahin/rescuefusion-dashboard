@@ -31,3 +31,16 @@
 .global-live-hint{font-size:11px;color:#9fc0e1;margin:9px 0 0;overflow-wrap:anywhere}
 .global-live-hint.error{color:#ff9daa}
 @media(max-width:560px){.global-live-controls button{width:100%}}
+
+
+/* Private inline live viewer: only the dedicated relay /embed endpoint may be framed. */
+.cam-view-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 12px}
+.cam-view-tabs button{font-size:12px;padding:8px 12px;border-radius:8px}
+.cam-view-tabs .cam-view-active{background:#215984;border-color:#5498d0;color:#fff}
+.inline-live-pane{border:1px solid #274667;border-radius:11px;background:#050c18;overflow:hidden}
+.inline-live-pane iframe{border:0;display:block;width:100%;height:clamp(290px,42vw,420px);background:#040b18}
+.inline-live-note{margin:0;padding:9px 11px;font-size:11px;color:#a3c9e9;background:#0b1930;overflow-wrap:anywhere}
+.inline-live-note.connected{color:#73e7b4}
+.inline-live-note.error{color:#ffb0ab}
+#inlineLivePane[hidden],#snapshotCameraPane[hidden]{display:none!important}
+@media(max-width:560px){.inline-live-pane iframe{height:290px}.cam-view-tabs button{flex:1 1 auto}}

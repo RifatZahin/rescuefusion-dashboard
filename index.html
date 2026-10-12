@@ -37,8 +37,21 @@
 .global-live-hint{font-size:11px;color:#9fc0e1;margin:9px 0 0;overflow-wrap:anywhere}
 .global-live-hint.error{color:#ff9daa}
 @media(max-width:560px){.global-live-controls button{width:100%}}
+
+/* Private inline live viewer: only the dedicated relay /embed endpoint may be framed. */
+.cam-view-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 12px}
+.cam-view-tabs button{font-size:12px;padding:8px 12px;border-radius:8px}
+.cam-view-tabs .cam-view-active{background:#215984;border-color:#5498d0;color:#fff}
+.inline-live-pane{border:1px solid #274667;border-radius:11px;background:#050c18;overflow:hidden}
+.inline-live-pane iframe{border:0;display:block;width:100%;height:clamp(290px,42vw,420px);background:#040b18}
+.inline-live-note{margin:0;padding:9px 11px;font-size:11px;color:#a3c9e9;background:#0b1930;overflow-wrap:anywhere}
+.inline-live-note.connected{color:#73e7b4}
+.inline-live-note.error{color:#ffb0ab}
+#inlineLivePane[hidden],#snapshotCameraPane[hidden]{display:none!important}
+@media(max-width:560px){.inline-live-pane iframe{height:290px}.cam-view-tabs button{flex:1 1 auto}}
+
 </style>
-<link rel="stylesheet" href="./styles.css?v=6">
+<link rel="stylesheet" href="./styles.css?v=7">
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
@@ -71,14 +84,24 @@
 <span class="muted tiny" id="topHint">Firebase connected after sign-in · waiting for PC bridge</span>
 </section>
 <section class="hero grid-hero">
-<article class="card cam-card"><div class="card-head"><h2>CAMERA · CLOUD SNAPSHOTS</h2><span id="streamBadge" class="tag">WAITING</span></div><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM live stream" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div>
+<article class="card cam-card"><div class="card-head"><h2>CAMERA · LIVE / SNAPSHOTS</h2><span id="streamBadge" class="tag">PRIVATE CAMERA</span></div>
+<div class="cam-view-tabs" role="group" aria-label="Camera view mode">
+  <button id="selectLiveView" type="button" class="cam-view-active" aria-pressed="true">▶ Live camera</button>
+  <button id="selectSnapshotView" type="button" aria-pressed="false">📷 Cloud snapshot</button>
+</div>
+<div id="inlineLivePane" class="inline-live-pane" hidden>
+  <iframe id="inlineLiveFrame" title="RescueFusion private live camera stream" referrerpolicy="no-referrer" loading="lazy"></iframe>
+  <p id="inlineLiveNote" class="inline-live-note" role="status">Connecting to private Tailscale camera…</p>
+</div>
+<div id="snapshotCameraPane"><div id="cameraStage" class="camera-stage"><p id="cameraPlaceholder">Camera snapshots will appear here once the PC snapshot relay starts.</p><img id="cameraStream" alt="ESP32-CAM protected cloud snapshot" hidden></div><div class="under-camera"><span id="streamNote">Secure Firebase snapshot relay — not continuous video</span><a id="openCam" href="#" target="_blank" rel="noopener noreferrer" hidden>Open camera webpage ↗</a></div></div>
 <div class="global-live-box">
   <div class="global-live-title"><strong>GLOBAL LIVE VIDEO</strong><span class="tag green" id="globalVideoBadge">TAILSCALE PRIVATE</span></div>
   <div class="global-live-controls">
     <input id="globalVideoURL" type="url" inputmode="url" spellcheck="false" autocomplete="off" aria-label="Private Tailscale or protected Cloudflare video link" placeholder="https://hamidy.tail65670e.ts.net/" />
-    <button id="watchGlobalVideo" type="button" class="primary">▶ Watch Live Video ↗</button>
+    <button id="showInlineGlobalVideo" type="button" class="primary">Show in Camera Box</button>
+    <button id="watchGlobalVideo" type="button" class="primary">Watch in New Tab ↗</button>
   </div>
-  <p id="globalVideoHint" class="global-live-hint" role="status">Private Tailscale camera opens in a new tab; Tailscale must be connected. Protected Cloudflare links also supported.</p>
+  <p id="globalVideoHint" class="global-live-hint" role="status">Live camera displays in the box above when Tailscale is connected; use a new tab as fallback. Cloudflare links open in a new tab.</p>
 </div></article>
 <article class="card detection"><div class="card-head"><h2>HUMAN DETECTION</h2><span class="tag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help">Edge Impulse inference is not yet integrated into the current MJPEG2SD camera firmware.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
 </section>
@@ -93,5 +116,5 @@
 <footer>RescueFusion · Firebase-authenticated telemetry · Camera snapshots require authorized login · Robot controls not available</footer>
 </main>
 </div>
-<script type="module" src="./app.js?v=6"></script>
+<script type="module" src="./app.js?v=7"></script>
 </body></html>
