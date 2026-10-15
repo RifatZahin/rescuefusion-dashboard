@@ -46,7 +46,7 @@ function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot
   $('gasValue').textContent = '—'; $('gasTag').textContent = 'NO DATA';
   $('cameraValue').textContent = '—'; $('cameraTag').textContent = 'NO DATA';
   $('uptimeValue').textContent = '—'; $('upTag').textContent = 'REMOTE';
-  $('humanValue').textContent = 'Waiting'; $('events').replaceChildren(); $('eventCount').textContent = '0 events';
+  $('humanValue').textContent = 'Waiting'; $('humanTag').textContent = 'NO AI EVENT'; $('humanTag').className = 'tag'; $('humanMeta').textContent = 'Waiting for Edge Impulse FOMO detections.'; $('events').replaceChildren(); $('eventCount').textContent = '0 events';
   placeholder(text);
 }
 function showLoggedOut() {
@@ -341,7 +341,31 @@ function drawStatus(data) {
   $('cameraTag').className = 'tag' + (http === 200 ? ' green' : http != null ? ' red' : '');
   $('uptimeValue').textContent = real && Number(s.session_started_at) ? duration(now-Number(s.session_started_at)) : '—';
   $('upTag').textContent = 'PC SESSION';
-  $('humanValue').textContent = 'Waiting'; // AI inference not available
+  drawDetection(data.ai_detection);
+}
+
+function drawDetection(ai) {
+  const value = $('humanValue'), tag = $('humanTag'), meta = $('humanMeta');
+  if (!ai || !Number(ai.updated_at_ms)) {
+    value.textContent = 'Waiting'; tag.textContent = 'NO AI EVENT'; tag.className = 'tag';
+    meta.textContent = 'Waiting for camera FOMO detections.'; return;
+  }
+  const ageMs = Date.now() - Number(ai.updated_at_ms);
+  if (ageMs < -60000 || ageMs > 15000) {
+    value.textContent = 'No recent detection'; tag.textContent = 'STALE'; tag.className = 'tag';
+    meta.textContent = 'Last camera AI update is stale. Check the camera-to-PC bridge.'; return;
+  }
+  if (ai.active !== true) {
+    value.textContent = 'No object detected'; tag.textContent = 'CLEAR'; tag.className = 'tag green';
+    meta.textContent = 'FOMO checked the latest frame · updated ' + Math.max(0, Math.floor(ageMs / 1000)) + 's ago.'; return;
+  }
+  const labels = { person: 'PERSON', object: 'OBJECT', pothole: 'PATH HOLE', 'path hole': 'PATH HOLE' };
+  const key = String(ai.label || '').trim().toLowerCase();
+  const label = labels[key] || String(ai.label || 'OBJECT').toUpperCase();
+  const confidence = Number(ai.confidence);
+  value.textContent = label; tag.textContent = 'DETECTED'; tag.className = 'tag green';
+  meta.textContent = (Number.isFinite(confidence) ? 'Confidence ' + Math.round(confidence * 100) + '%' : 'FOMO detection') +
+    ' · updated ' + Math.max(0, Math.floor(ageMs / 1000)) + 's ago.';
 }
 function drawLogs(raw) {
   currentLogs = arr(raw).filter(x => Number(x.seq) > clearThrough).slice(-120);

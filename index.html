@@ -51,7 +51,7 @@
 @media(max-width:560px){.inline-live-pane iframe{height:290px}.cam-view-tabs button{flex:1 1 auto}}
 
 </style>
-<link rel="stylesheet" href="./styles.css?v=7">
+<link rel="stylesheet" href="./styles.css?v=8">
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
@@ -103,7 +103,7 @@
   </div>
   <p id="globalVideoHint" class="global-live-hint" role="status">Live camera displays in the box above when Tailscale is connected; use a new tab as fallback. Cloudflare links open in a new tab.</p>
 </div></article>
-<article class="card detection"><div class="card-head"><h2>HUMAN DETECTION</h2><span class="tag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help">Edge Impulse inference is not yet integrated into the current MJPEG2SD camera firmware.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
+<article class="card detection"><div class="card-head"><h2>CAMERA AI DETECTION</h2><span class="tag" id="humanTag">NO AI EVENT</span></div><div class="big" id="humanValue">Waiting</div><div class="help" id="humanMeta">Waiting for camera FOMO detections.</div><div class="fine-divider"></div><div class="card-head"><h2>GPS LOCATION</h2><span class="tag" id="gpsTag">NO FIX</span></div><div class="big gps-big" id="gpsValue">—</div><div class="help" id="gpsExtra">Waiting for GPS coordinates from DevKit.</div><a class="location-link" id="mapLink" target="_blank" rel="noopener noreferrer" hidden>Open robot GPS on map ↗</a></article>
 </section>
 <section class="stats">
 <article class="card stat"><div class="card-head"><h2>OBSTACLE RANGE</h2><span class="tag" id="obstacleTag">—</span></div><div class="stat-number"><span id="obstacleValue">—</span><small> cm</small></div><div class="help">HC-SR04 · last front/center reading</div></article>
@@ -116,5 +116,5 @@
 <footer>RescueFusion · Firebase-authenticated telemetry · Camera snapshots require authorized login · Robot controls not available</footer>
 </main>
 </div>
-<script type="module" src="./app.js?v=7"></script>
+<script type="module" src="./app.js?v=8"></script>
 </body></html>
