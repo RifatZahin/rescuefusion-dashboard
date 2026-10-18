@@ -18,12 +18,37 @@ const auth = getAuth(app);
 const database = getDatabase(app);
 const LIVE_PATH = 'robots/rescuefusion/live';
 const CAMERA_PATH = 'robots/rescuefusion/camera/latest';
+const PIR_INSTALLED = false; // Set true only after wiring and verifying PIR telemetry.
 const $ = id => document.getElementById(id);
 const arr = x => Array.isArray(x) ? x.filter(Boolean) : x && typeof x === 'object' ? Object.values(x).filter(Boolean) : [];
+
+function showPage(page) {
+  const dashboard = page === 'dashboard';
+  $('dashboardPage').hidden = !dashboard;
+  $('controlPage').hidden = dashboard;
+  $('navDashboard').classList.toggle('active', dashboard);
+  $('navControl').classList.toggle('active', !dashboard);
+  $('navDashboard').setAttribute('aria-current', dashboard ? 'page' : 'false');
+  $('navControl').setAttribute('aria-current', dashboard ? 'false' : 'page');
+}
+$('navDashboard').addEventListener('click', () => showPage('dashboard'));
+$('navControl').addEventListener('click', () => showPage('control'));
 let detach = null, detachCamera = null, cloudFrame = null, lastLive = null, currentLogs = [], clearThrough = 0, lastSession = null;
 let firstEvents = true, lastEventId = 0, notificationsOn = false;
-let activeCameraPane = 'snapshot'; // switches to embedded live after Firebase owner sign-in
+let activeCameraPane = 'live';
 let inlineLastFrameTime = 0;
+let lastRescueEvent = null; // person/animal event paired with a later cloud still, session only
+const RESCUE_CLASSES = new Set([
+  'person','human','people','pedestrian','animal','bird','cat','dog','horse','sheep','cow',
+  'elephant','bear','zebra','giraffe','tiger','lion','deer','goat','monkey','pig','rabbit',
+  'fox','wolf','leopard','chicken','duck'
+]);
+function rescueSubjects(raw) {
+  return [...new Set(String(raw || '').toLowerCase()
+    .split(/[,;+]|\band\b/i)
+    .map(label => label.trim().replace(/[_-]+/g, ' '))
+    .filter(label => RESCUE_CLASSES.has(label)))];
+}
 
 function statusBadge(text, cls='offline') {
   const el = $('onlineBadge'); el.className = 'pill ' + cls; el.lastElementChild.textContent = text;
@@ -41,12 +66,17 @@ function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot
   $('outputStatus').textContent = text; $('outputTag').textContent = 'CLOUD WAITING';
   $('portName').textContent = 'REMOTE · FIREBASE';
   $('gpsValue').textContent = '—'; $('gpsTag').textContent = 'NO DATA';
-  $('gpsExtra').textContent = 'Waiting for robot GPS telemetry.'; $('mapLink').hidden = true;
+  $('gpsExtra').textContent = 'Waiting for robot GPS telemetry.';
   $('obstacleValue').textContent = '—'; $('obstacleTag').textContent = 'NO DATA';
   $('gasValue').textContent = '—'; $('gasTag').textContent = 'NO DATA';
   $('cameraValue').textContent = '—'; $('cameraTag').textContent = 'NO DATA';
   $('uptimeValue').textContent = '—'; $('upTag').textContent = 'REMOTE';
-  $('humanValue').textContent = 'Waiting'; $('humanTag').textContent = 'NO AI EVENT'; $('humanTag').className = 'tag'; $('humanMeta').textContent = 'Waiting for Edge Impulse FOMO detections.'; $('events').replaceChildren(); $('eventCount').textContent = '0 events';
+  $('humanValue').textContent = 'Waiting'; $('humanTag').textContent = 'NO AI EVENT'; $('humanTag').className = 'tag'; $('humanMeta').textContent = 'Waiting for camera AI updates.';
+  $('pirValue').textContent = 'PIR not installed yet'; $('pirTag').textContent = 'NOT INSTALLED'; $('pirTag').className = 'tag'; $('pirMeta').textContent = 'This sensor will be enabled after physical installation and telemetry testing.';
+  $('detectionLocation').textContent = 'No detection location recorded yet.'; $('detectionLocationMeta').textContent = 'A fresh GPS fix is needed to attach a location.';
+  $('buzzerState').textContent = 'Control unavailable'; $('buzzerButton').disabled = true;
+  $('snapshotBadge').textContent = 'WAITING'; $('snapshotBadge').className = 'tag yellow';
+  lastRescueEvent = null; $('events').replaceChildren(); $('eventCount').textContent = '0 events';
   placeholder(text);
 }
 function showLoggedOut() {
@@ -54,7 +84,7 @@ function showLoggedOut() {
   cloudFrame = null; $('cameraStream').hidden = true; $('cameraStream').removeAttribute('src');
   $('loginPanel').hidden = false; $('siteShell').hidden = true;
   $('loginPassword').value = ''; lastLive = null; currentLogs = []; clearThrough = 0;
-  lastSession = null; firstEvents = true; lastEventId = 0;
+  lastSession = null; firstEvents = true; lastEventId = 0; lastRescueEvent = null;
 }
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault(); $('loginButton').disabled = true; loginMessage('Signing in...');
@@ -104,27 +134,48 @@ function displayCloudCamera(snapshot) {
     cloudFrame = null; img.hidden = true; img.removeAttribute('src');
     $('cameraPlaceholder').hidden = false;
     $('cameraPlaceholder').textContent = 'Waiting for protected camera snapshots. Start camera_snapshot_relay.py on the PC.';
-    if (activeCameraPane !== 'live') $('streamBadge').textContent = 'CLOUD WAITING';
+    $('snapshotBadge').textContent = 'CLOUD WAITING'; $('snapshotBadge').className = 'tag yellow';
     $('streamNote').textContent = 'Cloud snapshots not available yet — live MJPEG is still local-only';
     return;
   }
   const stamp = Number(snapshot.updated_at_ms);
   if (!Number.isFinite(stamp) || stamp < 1000000000000) return;
   cloudFrame = {updated_at_ms:stamp, bytes:Number(snapshot.bytes) || 0};
+  linkSnapshotToRescueEvent(stamp);
   img.onload = () => { if(cloudFrame) { img.hidden=false; $('cameraPlaceholder').hidden=true; } };
   img.onerror = () => {img.hidden=true; $('cameraPlaceholder').hidden=false; $('cameraPlaceholder').textContent='Camera image decode failed.';};
   img.src='data:image/jpeg;base64,'+snapshot.jpeg_base64;
   updateCameraAge();
 }
+function linkSnapshotToRescueEvent(stamp) {
+  if (lastRescueEvent && stamp > lastRescueEvent.aiUpdatedAt) {
+    // This is the newest cloud still uploaded after the AI event, not a detector-triggered capture.
+    lastRescueEvent.snapshotAt = stamp;
+  }
+}
 function updateCameraAge() {
-  if (!cloudFrame || $('siteShell').hidden) return;
+  if ($('siteShell').hidden) return;
+  if (!cloudFrame) {
+    if (lastRescueEvent) {
+      $('snapshotBadge').textContent = 'AWAITING IMAGE'; $('snapshotBadge').className = 'tag yellow';
+      $('streamNote').textContent = `${lastRescueEvent.label} detected · waiting for the existing PC snapshot relay to upload a newer photo.`;
+    }
+    return;
+  }
   const ageSec = Math.max(0, Math.floor((Date.now()-cloudFrame.updated_at_ms)/1000));
   const stale = ageSec > 150;
-  if (activeCameraPane !== 'live') {
-    $('streamBadge').textContent=stale?'SNAPSHOT STALE':'CLOUD SNAPSHOT';
-    $('streamBadge').className='tag '+(stale?'yellow':'green');
+  const postDetection = lastRescueEvent && lastRescueEvent.snapshotAt === cloudFrame.updated_at_ms;
+  $('snapshotBadge').textContent = postDetection ? (stale ? 'EVENT IMAGE · STALE' : 'AFTER DETECTION') : stale ? 'SNAPSHOT STALE' : 'CLOUD SNAPSHOT';
+  $('snapshotBadge').className = 'tag ' + (stale ? 'yellow' : 'green');
+  if (postDetection) {
+    const delaySec = Math.max(0, Math.floor((cloudFrame.updated_at_ms-lastRescueEvent.aiUpdatedAt)/1000));
+    $('streamNote').textContent = `${lastRescueEvent.label} event · newest cloud photo uploaded ${delaySec}s later · ${ageSec}s old · relay-timed`;
+  } else if (lastRescueEvent) {
+    $('snapshotBadge').textContent = 'AWAITING IMAGE'; $('snapshotBadge').className = 'tag yellow';
+    $('streamNote').textContent = `${lastRescueEvent.label} detected · waiting for a newer photo from the existing PC snapshot relay.`;
+  } else {
+    $('streamNote').textContent=`Last protected camera photo: ${ageSec}s ago · ${cloudFrame.bytes} bytes · NOT continuous video`;
   }
-  $('streamNote').textContent=`Last protected camera photo: ${ageSec}s ago · ${cloudFrame.bytes} bytes · NOT continuous video`;
 }
 setInterval(updateCameraAge,5000);
 
@@ -142,7 +193,7 @@ function connectCamera() {
     $('cameraStream').hidden = true;
     $('cameraPlaceholder').hidden = false;
     $('cameraPlaceholder').textContent = 'Local camera is on Wi-Fi. Cloud snapshots need the PC camera relay.';
-    if (activeCameraPane !== 'live') $('streamBadge').textContent = 'CLOUD WAITING';
+    $('snapshotBadge').textContent = 'CLOUD WAITING'; $('snapshotBadge').className = 'tag yellow';
   }
   $('streamNote').textContent = cloudFrame ? $('streamNote').textContent : 'Open camera webpage on the same Wi-Fi to view original MJPEG2SD video';
 }
@@ -188,40 +239,24 @@ function setInlineCameraNote(text, state='') {
   inlineNote.className = 'inline-live-note' + (state ? ' '+state : '');
 }
 function setCameraPane(which) {
-  if (which !== 'live' && which !== 'snapshot') return;
-  activeCameraPane = which;
-  const live = which === 'live';
-  inlinePane.hidden = !live;
-  $('snapshotCameraPane').hidden = live;
-  $('selectLiveView').classList.toggle('cam-view-active', live);
-  $('selectSnapshotView').classList.toggle('cam-view-active', !live);
-  $('selectLiveView').setAttribute('aria-pressed',String(live));
-  $('selectSnapshotView').setAttribute('aria-pressed',String(!live));
-  if (!live) {
-    stopInlineCamera();
-    updateCameraAge();
-    if (!cloudFrame) {
-      $('streamBadge').textContent = 'CLOUD WAITING';
-      $('streamBadge').className = 'tag yellow';
-    }
-    return;
-  }
+  // Show the existing private live view beside the Firebase snapshot.
+  activeCameraPane = 'live';
+  inlinePane.hidden = false;
+  $('snapshotCameraPane').hidden = false;
   $('streamBadge').textContent = 'PRIVATE · CONNECTING';
   $('streamBadge').className = 'tag';
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
   if (!parsed || !parsed.isTailscale) {
     stopInlineCamera();
-    setInlineCameraNote('For an in-panel live view, enter your private HTTPS *.ts.net Tailscale Serve address below. Cloudflare links are supported in a new tab.','error');
+    setInlineCameraNote('The live view needs the saved private HTTPS Tailscale address. Use Camera connection options if the address changes.','error');
     $('streamBadge').textContent = 'TAILSCALE NEEDED';
     return;
   }
-  setInlineCameraNote('Connecting to private video. This device must have Tailscale connected; the PC Relay v3.1 must be running.');
-  // Do not insert arbitrary remote pages into the dashboard; use the root-only validated Tailscale host.
+  setInlineCameraNote('Connecting to the private camera. This device needs Tailscale and the PC Relay must be running.');
+  // Keep the validated private /embed endpoint and existing relay protocol.
   const endpoint=parsed.url+'embed';
   if (inlineFrame.getAttribute('src')!==endpoint) inlineFrame.src=endpoint;
 }
-$('selectLiveView').onclick=()=>setCameraPane('live');
-$('selectSnapshotView').onclick=()=>setCameraPane('snapshot');
 $('showInlineGlobalVideo').onclick=()=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
   if (!parsed || !parsed.isTailscale) {
@@ -239,7 +274,7 @@ $('showInlineGlobalVideo').onclick=()=>{
 };
 window.addEventListener('message',(event)=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (activeCameraPane!=='live' || !parsed || !parsed.isTailscale ||
+  if (!parsed || !parsed.isTailscale ||
       event.origin !== new URL(parsed.url).origin || event.source !== inlineFrame.contentWindow ||
       !event.data || event.data.type !== 'rescuefusion-camera-embedded') return;
   if(event.data.state==='live') {
@@ -322,11 +357,9 @@ function drawStatus(data) {
     $('gpsTag').textContent = 'VALID FIX'; $('gpsTag').className = 'tag green';
     $('gpsValue').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     $('gpsExtra').textContent = `Robot GPS · ${s.gps_sats ?? '?'} satellites`;
-    $('mapLink').href = `https://www.google.com/maps?q=${lat},${lng}`; $('mapLink').hidden = false;
   } else {
     $('gpsTag').textContent = 'NO FRESH FIX'; $('gpsTag').className = 'tag';
     $('gpsValue').textContent = '—'; $('gpsExtra').textContent = `Waiting for fresh GPS fix · ${s.gps_sats ?? '—'} satellites`;
-    $('mapLink').hidden = true;
   }
   const front = real && s.front_cm != null ? Number(s.front_cm) : NaN;
   $('obstacleValue').textContent = Number.isFinite(front) ? front.toFixed(1) : '—';
@@ -341,31 +374,126 @@ function drawStatus(data) {
   $('cameraTag').className = 'tag' + (http === 200 ? ' green' : http != null ? ' red' : '');
   $('uptimeValue').textContent = real && Number(s.session_started_at) ? duration(now-Number(s.session_started_at)) : '—';
   $('upTag').textContent = 'PC SESSION';
-  drawDetection(data.ai_detection);
+  drawPIR(s);
+  drawBuzzer(s);
+  drawDetection(data.ai_detection, s, gpsFresh, lat, lng);
 }
 
-function drawDetection(ai) {
+function drawPIR(status) {
+  if (!PIR_INSTALLED) {
+    $('pirValue').textContent = 'PIR not installed yet';
+    $('pirTag').textContent = 'NOT INSTALLED'; $('pirTag').className = 'tag';
+    $('pirMeta').textContent = 'This sensor will be enabled after physical installation and telemetry testing.';
+    return;
+  }
+  const raw = status.pir_motion ?? status.pir_detected ?? status.pir ?? null;
+  const value = $('pirValue'), tag = $('pirTag'), meta = $('pirMeta');
+  if (raw === null || raw === undefined || raw === '') {
+    value.textContent = 'Waiting for PIR data';
+    tag.textContent = 'NO DATA'; tag.className = 'tag';
+    meta.textContent = 'PIR motion data is not present in the current telemetry stream.';
+    return;
+  }
+  const normalized = String(raw).trim().toLowerCase();
+  const active = raw === true || raw === 1 || ['true','1','on','motion','detected','active'].includes(normalized);
+  const inactive = raw === false || raw === 0 || ['false','0','off','clear','none','inactive'].includes(normalized);
+  if (!active && !inactive) {
+    value.textContent = String(raw).slice(0,60);
+    tag.textContent = 'PIR STATUS'; tag.className = 'tag';
+    meta.textContent = 'PIR value received from telemetry.';
+    return;
+  }
+  value.textContent = active ? 'Human motion detected' : 'No motion';
+  tag.textContent = active ? 'MOTION' : 'CLEAR';
+  tag.className = 'tag' + (active ? ' yellow' : ' green');
+  meta.textContent = 'PIR indicates movement; camera AI is needed to classify a person or animal.';
+}
+
+function drawBuzzer(status) {
+  const raw = status.buzzer;
+  const on = raw === true || raw === 1 || ['true','1','on','active'].includes(String(raw).trim().toLowerCase());
+  $('buzzerState').textContent = on ? 'Buzzer active' : 'Buzzer command unavailable';
+  $('buzzerHint').textContent = on
+    ? 'The current DevKit telemetry reports the buzzer as active.'
+    : 'Button control will be enabled after the Arduino command path is implemented.';
+  // Firebase is read-only in this browser; never pretend a click triggered hardware.
+  $('buzzerButton').disabled = true;
+}
+
+function drawDetection(ai, status, gpsFresh, currentLat, currentLng) {
   const value = $('humanValue'), tag = $('humanTag'), meta = $('humanMeta');
   if (!ai || !Number(ai.updated_at_ms)) {
     value.textContent = 'Waiting'; tag.textContent = 'NO AI EVENT'; tag.className = 'tag';
-    meta.textContent = 'Waiting for camera FOMO detections.'; return;
+    meta.textContent = 'Waiting for camera AI updates.';
+    drawDetectionPin(gpsFresh, currentLat, currentLng);
+    return;
   }
-  const ageMs = Date.now() - Number(ai.updated_at_ms);
+  const stamp = Number(ai.updated_at_ms);
+  const ageMs = Date.now() - stamp;
   if (ageMs < -60000 || ageMs > 15000) {
     value.textContent = 'No recent detection'; tag.textContent = 'STALE'; tag.className = 'tag';
-    meta.textContent = 'Last camera AI update is stale. Check the camera-to-PC bridge.'; return;
+    meta.textContent = 'Last camera AI update is stale. Check the camera-to-PC bridge.';
+    drawDetectionPin(gpsFresh, currentLat, currentLng);
+    return;
   }
   if (ai.active !== true) {
     value.textContent = 'No object detected'; tag.textContent = 'CLEAR'; tag.className = 'tag green';
-    meta.textContent = 'FOMO checked the latest frame · updated ' + Math.max(0, Math.floor(ageMs / 1000)) + 's ago.'; return;
+    meta.textContent = 'Camera AI checked the latest frame · updated ' + Math.max(0, Math.floor(ageMs / 1000)) + 's ago.';
+    drawDetectionPin(gpsFresh, currentLat, currentLng);
+    return;
   }
-  const labels = { person: 'PERSON', object: 'OBJECT', pothole: 'PATH HOLE', 'path hole': 'PATH HOLE' };
-  const key = String(ai.label || '').trim().toLowerCase();
-  const label = labels[key] || String(ai.label || 'OBJECT').toUpperCase();
+  const rawLabel = String(ai.label || 'OBJECT').trim();
+  const displayLabel = rawLabel.toUpperCase();
+  const subjects = rescueSubjects(rawLabel);
+  if (subjects.length) recordRescueDetection(ai, subjects, gpsFresh, currentLat, currentLng);
   const confidence = Number(ai.confidence);
-  value.textContent = label; tag.textContent = 'DETECTED'; tag.className = 'tag green';
-  meta.textContent = (Number.isFinite(confidence) ? 'Confidence ' + Math.round(confidence * 100) + '%' : 'FOMO detection') +
+  value.textContent = displayLabel;
+  tag.textContent = subjects.length ? 'LIVING SUBJECT' : 'OBJECT';
+  tag.className = subjects.length ? 'tag green' : 'tag';
+  meta.textContent = (Number.isFinite(confidence) ? 'Confidence ' + Math.round(confidence * 100) + '%' : 'Camera AI detection') +
+    (subjects.length ? ' · person/animal event linked to GPS and the next newer cloud photo' : ' · no person/animal location or photo link') +
     ' · updated ' + Math.max(0, Math.floor(ageMs / 1000)) + 's ago.';
+  drawDetectionPin(gpsFresh, currentLat, currentLng);
+}
+
+function recordRescueDetection(ai, subjects, gpsFresh, currentLat, currentLng) {
+  const stamp = Number(ai.updated_at_ms);
+  const signature = subjects.slice().sort().join(',');
+  if (lastRescueEvent && lastRescueEvent.signature === signature && stamp-lastRescueEvent.lastSeenAt <= 20000) {
+    lastRescueEvent.lastSeenAt = Math.max(stamp, lastRescueEvent.lastSeenAt);
+    return;
+  }
+  const hasAIPosition = (ai.gps_lat != null && ai.gps_lng != null) || (ai.latitude != null && ai.longitude != null);
+  const rawLat = hasAIPosition ? (ai.gps_lat ?? ai.latitude) : currentLat;
+  const rawLng = hasAIPosition ? (ai.gps_lng ?? ai.longitude) : currentLng;
+  const lat = Number(rawLat), lng = Number(rawLng);
+  const hasLocation = (hasAIPosition || gpsFresh) && Number.isFinite(lat) && Number.isFinite(lng) && rawLat != null && rawLng != null;
+  const label = subjects.map(x => x.toUpperCase()).join(', ');
+  lastRescueEvent = {
+    label, signature, lat: hasLocation ? lat : null, lng: hasLocation ? lng : null,
+    hasLocation, aiUpdatedAt: stamp, lastSeenAt: stamp, snapshotAt: null
+  };
+  if (cloudFrame && cloudFrame.updated_at_ms > stamp) lastRescueEvent.snapshotAt = cloudFrame.updated_at_ms;
+  updateCameraAge();
+}
+
+function drawDetectionPin(gpsFresh, currentLat, currentLng) {
+  // Keep this browser-session pin; the dashboard does not write event data to Firebase.
+  if (lastRescueEvent && !lastRescueEvent.hasLocation && gpsFresh &&
+      Number.isFinite(currentLat) && Number.isFinite(currentLng)) {
+    lastRescueEvent.lat = currentLat; lastRescueEvent.lng = currentLng;
+    lastRescueEvent.hasLocation = true;
+  }
+  if (lastRescueEvent?.hasLocation) {
+    $('detectionLocation').textContent = `${lastRescueEvent.label} · ${lastRescueEvent.lat.toFixed(6)}, ${lastRescueEvent.lng.toFixed(6)}`;
+    $('detectionLocationMeta').textContent = `Latest person/animal AI event · ${new Date(lastRescueEvent.aiUpdatedAt).toLocaleString()} · this session`;
+  } else if (lastRescueEvent) {
+    $('detectionLocation').textContent = `${lastRescueEvent.label} detected · waiting for GPS`;
+    $('detectionLocationMeta').textContent = 'A valid current GPS fix will be attached when available.';
+  } else {
+    $('detectionLocation').textContent = 'No detection location recorded yet.';
+    $('detectionLocationMeta').textContent = 'A person or animal AI event and a fresh GPS fix are needed.';
+  }
 }
 function drawLogs(raw) {
   currentLogs = arr(raw).filter(x => Number(x.seq) > clearThrough).slice(-120);
@@ -395,7 +523,7 @@ function drawEvents(raw) {
   const highest=Math.max(0,...items.map(x => Number(x.id) || 0));
   if (!firstEvents && notificationsOn && highest > lastEventId) {
     for (const x of items.filter(v => Number(v.id)>lastEventId && v.kind==='warning')) {
-      try { new Notification('RescueFusion sensor event', {body: String(x.message).slice(0,180)}); } catch { /* browser may block */ }
+      try { new Notification('MagmaFusion sensor event', {body: String(x.message).slice(0,180)}); } catch { /* browser may block */ }
     }
   }
   firstEvents=false; lastEventId=Math.max(lastEventId,highest);
@@ -403,7 +531,7 @@ function drawEvents(raw) {
 function receiveLive(data) {
   if (!data || typeof data !== 'object') { lastLive=null; showWaiting(); return; }
   const session=data.status?.session_started_at ?? null;
-  if (lastSession !== session) { lastSession=session; clearThrough=0; firstEvents=true; lastEventId=0; }
+  if (lastSession !== session) { lastSession=session; clearThrough=0; firstEvents=true; lastEventId=0; lastRescueEvent=null; }
   lastLive=data;
   drawStatus(data); drawLogs(data.output); drawEvents(data.events);
 }
