@@ -201,7 +201,7 @@ $('connectCam').onclick = connectCamera;
 $('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });
 // Private or protected HTTPS video launcher. Only HTTPS Tailscale Serve / Cloudflare Quick Tunnels.
 // URL is stored locally in the user's browser, never sent to Firebase.
-const INITIAL_LIVE_VIDEO_URL = 'https://hamidy.tail65670e.ts.net/';
+const INITIAL_LIVE_VIDEO_URL = 'https://penalty-yale-blast-lying.trycloudflare.com/';
 const liveVideoInput = $('globalVideoURL');
 const liveVideoHint = $('globalVideoHint');
 const liveVideoBadge = $('globalVideoBadge');
@@ -216,12 +216,12 @@ function normalizedProtectedVideoUrl(input) {
     // Prevent javascript:, userinfo, non-HTTPS, custom ports, redirects and unrelated URLs.
     if (u.protocol !== 'https:' || !(isTailscale || isQuickTunnel) ||
         u.username || u.password || u.port || u.pathname !== '/' || u.search || u.hash) return null;
-    return { url: u.origin + '/', isTailscale };
+    return { url: u.origin + '/', isTailscale, isQuickTunnel };
   } catch { return null; }
 }
 function labelVideoMode(mode) {
   if (!mode) return;
-  liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'EMAIL OTP';
+  liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'CLOUDFLARE PUBLIC';
 }
 labelVideoMode(normalizedProtectedVideoUrl(liveVideoInput.value));
 
@@ -246,7 +246,7 @@ function setCameraPane(which) {
   $('streamBadge').textContent = 'PRIVATE · CONNECTING';
   $('streamBadge').className = 'tag';
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed || !parsed.isTailscale) {
+  if (!parsed) {
     stopInlineCamera();
     setInlineCameraNote('The live view needs the saved private HTTPS Tailscale address. Use Camera connection options if the address changes.','error');
     $('streamBadge').textContent = 'TAILSCALE NEEDED';
@@ -259,7 +259,7 @@ function setCameraPane(which) {
 }
 $('showInlineGlobalVideo').onclick=()=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed || !parsed.isTailscale) {
+  if (!parsed) {
     liveVideoHint.textContent='Inline video requires a valid HTTPS Tailscale *.ts.net root URL. Use Watch in New Tab for Cloudflare.';
     liveVideoHint.className='global-live-hint error';
     return;
@@ -274,7 +274,7 @@ $('showInlineGlobalVideo').onclick=()=>{
 };
 window.addEventListener('message',(event)=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed || !parsed.isTailscale ||
+  if (!parsed ||
       event.origin !== new URL(parsed.url).origin || event.source !== inlineFrame.contentWindow ||
       !event.data || event.data.type !== 'rescuefusion-camera-embedded') return;
   if(event.data.state==='live') {
