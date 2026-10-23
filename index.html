@@ -6,16 +6,12 @@
   <meta name="theme-color" content="#11170f">
   <title>MagmaFusion | Search &amp; Rescue Dashboard</title>
   <link rel="stylesheet" href="./styles.css?v=9">
-  <style>
-    .brand-icon { width: 52px; height: 52px; flex: 0 0 52px; display: inline-flex; align-items: center; justify-content: center; padding: 0; overflow: hidden; border-radius: 12px; background: #05070a; }
-    .brand-icon img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
-  </style>
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
   <div class="login-card">
     <div class="brand-lockup">
-      <span class="brand-icon"><img src="./IMG_9779.PNG" alt="MagmaFusion rescue robot logo"></span>
+      <span class="brand-icon">MF</span>
       <span><strong>MagmaFusion</strong><small>SEARCH &amp; RESCUE SYSTEM</small></span>
     </div>
     <div class="login-rule"></div>
@@ -38,7 +34,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand-lockup">
-        <span class="brand-icon"><img src="./IMG_9779.PNG" alt="MagmaFusion rescue robot logo"></span>
+        <span class="brand-icon">MF</span>
         <span><strong class="brand-title">MagmaFusion</strong><small>SEARCH &amp; RESCUE · FIELD DASHBOARD</small></span>
       </div>
       <div id="onlineBadge" class="status-pill offline"><span class="status-dot"></span><span>Waiting for PC bridge</span></div>
@@ -136,7 +132,7 @@
           <p id="humanMeta" class="help">Waiting for camera AI updates.</p>
           <div class="feature-divider"></div>
           <div class="card-head compact-head">
-            <div><p class="eyebrow">PIR SENSOR</p><h2>Motion status</h2></div>
+            <div><p class="eyebrow">PIR MOTION SENSOR</p><h2>Motion status</h2></div>
             <span id="pirTag" class="tag">NO DATA</span>
           </div>
           <div id="pirValue" class="sub-feature-value">Waiting for PIR data</div>
@@ -178,6 +174,16 @@
           <div class="card-head"><div><p class="eyebrow">PC SESSION</p><h2>Uptime</h2></div><span id="upTag" class="tag green">LOCAL</span></div>
           <div id="uptimeValue" class="stat-value small-value">—</div>
           <p class="help">Serial session elapsed · not MCU uptime</p>
+        </article>
+        <article class="card stat-card">
+          <div class="card-head"><div><p class="eyebrow">TILT / MOTION</p><h2>ADXL345 status</h2></div><span id="tiltTag" class="tag">NO DATA</span></div>
+          <div id="tiltValue" class="stat-value small-value">Waiting</div>
+          <p id="tiltMeta" class="help">Waiting for accelerometer telemetry.</p>
+        </article>
+        <article class="card stat-card">
+          <div class="card-head"><div><p class="eyebrow">TEMPERATURE</p><h2>TMP102</h2></div><span id="tempTag" class="tag">NO DATA</span></div>
+          <div class="stat-value"><span id="tempValue">—</span><small>°C</small></div>
+          <p class="help">Digital temperature reading from the robot</p>
         </article>
       </section>
 

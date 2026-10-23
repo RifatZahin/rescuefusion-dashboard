@@ -18,7 +18,6 @@ const auth = getAuth(app);
 const database = getDatabase(app);
 const LIVE_PATH = 'robots/rescuefusion/live';
 const CAMERA_PATH = 'robots/rescuefusion/camera/latest';
-const PIR_INSTALLED = false; // Set true only after wiring and verifying PIR telemetry.
 const $ = id => document.getElementById(id);
 const arr = x => Array.isArray(x) ? x.filter(Boolean) : x && typeof x === 'object' ? Object.values(x).filter(Boolean) : [];
 
@@ -72,7 +71,9 @@ function showWaiting(text='Waiting for the PC-to-Firebase bridge to upload robot
   $('cameraValue').textContent = '—'; $('cameraTag').textContent = 'NO DATA';
   $('uptimeValue').textContent = '—'; $('upTag').textContent = 'REMOTE';
   $('humanValue').textContent = 'Waiting'; $('humanTag').textContent = 'NO AI EVENT'; $('humanTag').className = 'tag'; $('humanMeta').textContent = 'Waiting for camera AI updates.';
-  $('pirValue').textContent = 'PIR not installed yet'; $('pirTag').textContent = 'NOT INSTALLED'; $('pirTag').className = 'tag'; $('pirMeta').textContent = 'This sensor will be enabled after physical installation and telemetry testing.';
+  $('pirValue').textContent = 'Waiting for PIR data'; $('pirTag').textContent = 'NO DATA'; $('pirTag').className = 'tag'; $('pirMeta').textContent = 'PIR detects motion; it does not identify a person by itself.';
+  $('tiltValue').textContent = 'Waiting'; $('tiltTag').textContent = 'NO DATA'; $('tiltTag').className = 'tag'; $('tiltMeta').textContent = 'Waiting for accelerometer telemetry.';
+  $('tempValue').textContent = '—'; $('tempTag').textContent = 'NO DATA'; $('tempTag').className = 'tag';
   $('detectionLocation').textContent = 'No detection location recorded yet.'; $('detectionLocationMeta').textContent = 'A fresh GPS fix is needed to attach a location.';
   $('buzzerState').textContent = 'Control unavailable'; $('buzzerButton').disabled = true;
   $('snapshotBadge').textContent = 'WAITING'; $('snapshotBadge').className = 'tag yellow';
@@ -201,7 +202,7 @@ $('connectCam').onclick = connectCamera;
 $('cameraIP').addEventListener('keydown', e => { if (e.key === 'Enter') connectCamera(); });
 // Private or protected HTTPS video launcher. Only HTTPS Tailscale Serve / Cloudflare Quick Tunnels.
 // URL is stored locally in the user's browser, never sent to Firebase.
-const INITIAL_LIVE_VIDEO_URL = 'https://penalty-yale-blast-lying.trycloudflare.com/';
+const INITIAL_LIVE_VIDEO_URL = 'https://hamidy.tail65670e.ts.net/';
 const liveVideoInput = $('globalVideoURL');
 const liveVideoHint = $('globalVideoHint');
 const liveVideoBadge = $('globalVideoBadge');
@@ -216,12 +217,12 @@ function normalizedProtectedVideoUrl(input) {
     // Prevent javascript:, userinfo, non-HTTPS, custom ports, redirects and unrelated URLs.
     if (u.protocol !== 'https:' || !(isTailscale || isQuickTunnel) ||
         u.username || u.password || u.port || u.pathname !== '/' || u.search || u.hash) return null;
-    return { url: u.origin + '/', isTailscale, isQuickTunnel };
+    return { url: u.origin + '/', isTailscale };
   } catch { return null; }
 }
 function labelVideoMode(mode) {
   if (!mode) return;
-  liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'CLOUDFLARE PUBLIC';
+  liveVideoBadge.textContent = mode.isTailscale ? 'TAILSCALE PRIVATE' : 'EMAIL OTP';
 }
 labelVideoMode(normalizedProtectedVideoUrl(liveVideoInput.value));
 
@@ -246,7 +247,7 @@ function setCameraPane(which) {
   $('streamBadge').textContent = 'PRIVATE · CONNECTING';
   $('streamBadge').className = 'tag';
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed) {
+  if (!parsed || !parsed.isTailscale) {
     stopInlineCamera();
     setInlineCameraNote('The live view needs the saved private HTTPS Tailscale address. Use Camera connection options if the address changes.','error');
     $('streamBadge').textContent = 'TAILSCALE NEEDED';
@@ -259,7 +260,7 @@ function setCameraPane(which) {
 }
 $('showInlineGlobalVideo').onclick=()=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed) {
+  if (!parsed || !parsed.isTailscale) {
     liveVideoHint.textContent='Inline video requires a valid HTTPS Tailscale *.ts.net root URL. Use Watch in New Tab for Cloudflare.';
     liveVideoHint.className='global-live-hint error';
     return;
@@ -274,7 +275,7 @@ $('showInlineGlobalVideo').onclick=()=>{
 };
 window.addEventListener('message',(event)=>{
   const parsed=normalizedProtectedVideoUrl(liveVideoInput.value);
-  if (!parsed ||
+  if (!parsed || !parsed.isTailscale ||
       event.origin !== new URL(parsed.url).origin || event.source !== inlineFrame.contentWindow ||
       !event.data || event.data.type !== 'rescuefusion-camera-embedded') return;
   if(event.data.state==='live') {
@@ -347,7 +348,7 @@ function drawStatus(data) {
   const usbFresh = s.serial_connected === true && Number(s.last_line_at) > 0 && now-Number(s.last_line_at) < 25;
   const real = bridgeFresh && usbFresh && !s.demo;
   statusBadge(s.demo ? 'DEMO · NOT ROBOT' : real ? 'DEVKIT ONLINE · CLOUD LIVE' : bridgeFresh ? 'BRIDGE ONLINE · DEVKIT OFFLINE' : 'BRIDGE OFFLINE / STALE', s.demo ? 'demo' : real ? 'online' : 'offline');
-  $('topHint').textContent = s.demo ? 'Demo data: not real telemetry.' : real ? 'Live PC USB → Firebase telemetry' : bridgeFresh ? 'Bridge connected. Waiting for serial data.' : 'No recent cloud update. Check PC bridge.';
+  $('topHint').textContent = s.demo ? 'Demo data: not real telemetry.' : real ? 'Live ESP32 Wi-Fi → Firebase telemetry' : bridgeFresh ? 'Bridge connected. Waiting for ESP32 telemetry.' : 'No recent cloud update. Check PC bridge.';
   $('outputTag').textContent = real ? 'CLOUD LIVE' : bridgeFresh ? 'CONNECTED' : 'STALE';
   $('outputStatus').textContent = bridgeFresh ? 'Read-only ESP32 DevKit serial logs, forwarded by PC' : 'Cloud data may be stale; check PC bridge';
   $('portName').textContent = `${s.port || 'COM4'} · 115200 baud · cloud`;
@@ -374,20 +375,28 @@ function drawStatus(data) {
   $('cameraTag').className = 'tag' + (http === 200 ? ' green' : http != null ? ' red' : '');
   $('uptimeValue').textContent = real && Number(s.session_started_at) ? duration(now-Number(s.session_started_at)) : '—';
   $('upTag').textContent = 'PC SESSION';
-  drawPIR(s);
+  drawPIR(s, real);
+  drawTilt(s, real);
+  drawTemperature(s, real);
   drawBuzzer(s);
   drawDetection(data.ai_detection, s, gpsFresh, lat, lng);
 }
 
-function drawPIR(status) {
-  if (!PIR_INSTALLED) {
-    $('pirValue').textContent = 'PIR not installed yet';
-    $('pirTag').textContent = 'NOT INSTALLED'; $('pirTag').className = 'tag';
-    $('pirMeta').textContent = 'This sensor will be enabled after physical installation and telemetry testing.';
-    return;
-  }
+function drawPIR(status, real) {
   const raw = status.pir_motion ?? status.pir_detected ?? status.pir ?? null;
   const value = $('pirValue'), tag = $('pirTag'), meta = $('pirMeta');
+  if (!real) {
+    value.textContent = 'Waiting for PIR data';
+    tag.textContent = 'NO DATA'; tag.className = 'tag';
+    meta.textContent = 'Waiting for fresh PIR telemetry.';
+    return;
+  }
+  if (status.pir_ready === false) {
+    value.textContent = 'Warming up';
+    tag.textContent = 'WARMING UP'; tag.className = 'tag yellow';
+    meta.textContent = 'PIR sensor is stabilizing after power-up.';
+    return;
+  }
   if (raw === null || raw === undefined || raw === '') {
     value.textContent = 'Waiting for PIR data';
     tag.textContent = 'NO DATA'; tag.className = 'tag';
@@ -403,10 +412,47 @@ function drawPIR(status) {
     meta.textContent = 'PIR value received from telemetry.';
     return;
   }
-  value.textContent = active ? 'Human motion detected' : 'No motion';
+  value.textContent = active ? 'Motion detected' : 'No motion';
   tag.textContent = active ? 'MOTION' : 'CLEAR';
   tag.className = 'tag' + (active ? ' yellow' : ' green');
   meta.textContent = 'PIR indicates movement; camera AI is needed to classify a person or animal.';
+}
+
+function drawTilt(status, real) {
+  const value = $('tiltValue'), tag = $('tiltTag'), meta = $('tiltMeta');
+  let raw = status.tilt_detected;
+  let x = Number(status.tilt_x_deg), y = Number(status.tilt_y_deg);
+  let valid = status.adxl_valid !== false;
+  const gx = Number(status.adxl_x_g), gy = Number(status.adxl_y_g), gz = Number(status.adxl_z_g);
+  const hasAcceleration = status.adxl_x_g != null && status.adxl_y_g != null && status.adxl_z_g != null &&
+    Number.isFinite(gx) && Number.isFinite(gy) && Number.isFinite(gz);
+  if (status.adxl_valid === true && raw !== true && raw !== false && hasAcceleration) {
+    const toDeg = 180 / Math.PI;
+    x = Math.atan2(gx, Math.hypot(gy, gz)) * toDeg;
+    y = Math.atan2(gy, Math.hypot(gx, gz)) * toDeg;
+    raw = Math.abs(x) >= 25 || Math.abs(y) >= 25;
+  }
+  const hasAngles = (Number.isFinite(x) && Number.isFinite(y)) &&
+    ((status.tilt_x_deg != null && status.tilt_y_deg != null) || hasAcceleration);
+  if (!real || !valid || (raw !== true && raw !== false)) {
+    value.textContent = 'No sensor data';
+    tag.textContent = 'NO DATA'; tag.className = 'tag';
+    meta.textContent = 'Waiting for ADXL345 tilt status.';
+    return;
+  }
+  value.textContent = raw ? 'Tilt detected' : 'Level';
+  tag.textContent = raw ? 'TILT' : 'LEVEL';
+  tag.className = 'tag' + (raw ? ' yellow' : ' green');
+  meta.textContent = hasAngles ? `X ${x.toFixed(1)}° · Y ${y.toFixed(1)}° · threshold 25°` : 'ADXL345 status received.';
+}
+
+function drawTemperature(status, real) {
+  const raw = status.temperature_c;
+  const value = Number(raw);
+  const valid = real && status.tmp102_valid !== false && raw !== null && raw !== undefined && Number.isFinite(value) && value >= -40 && value <= 125;
+  $('tempValue').textContent = valid ? value.toFixed(2) : '—';
+  $('tempTag').textContent = valid ? 'LIVE' : 'NO DATA';
+  $('tempTag').className = 'tag' + (valid ? ' green' : '');
 }
 
 function drawBuzzer(status) {
