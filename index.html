@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#11170f">
   <title>MagmaFusion | Search &amp; Rescue Dashboard</title>
-  <link rel="stylesheet" href="./styles.css?v=9">
+  <link rel="stylesheet" href="./styles.css?v=10">
 </head>
 <body>
 <section id="loginPanel" class="login-viewport">
@@ -118,7 +118,7 @@
               <span class="snapshot-lock">PRIVATE</span>
             </div>
           </div>
-          <p class="snapshot-footnote">A person or animal event is linked to the next newer cloud snapshot. Capture timing follows the existing PC snapshot relay.</p>
+          <p class="snapshot-footnote">Event-triggered relay photo. It may differ from the frame used by the detector; older photos are marked stale.</p>
         </article>
       </section>
 
@@ -147,7 +147,7 @@
           <div id="gpsValue" class="feature-value gps-value">—</div>
           <p id="gpsExtra" class="help">Waiting for GPS coordinates from DevKit.</p>
           <div class="detection-pin">
-            <div class="pin-title"><span class="pin-mark">●</span><strong>Latest person / animal location</strong></div>
+            <div class="pin-title"><span class="pin-mark">●</span><strong>Robot location associated with detection</strong></div>
             <p id="detectionLocation">No detection location recorded yet.</p>
             <small id="detectionLocationMeta">A fresh GPS fix is needed to attach a location.</small>
           </div>
@@ -218,9 +218,13 @@
       </div>
       <div class="card control-notice">
         <span class="notice-icon">!</span>
-        <p><strong>Manual drive is not enabled yet.</strong> These controls are a visual preview. They will stay inactive until the Arduino firmware and a secure command path are implemented and tested.</p>
+        <p><strong>Local manual controller is separate.</strong> Install the included firmware, then open its controller on the same trusted Wi-Fi. Public viewers cannot operate the robot. The previews below remain inactive.</p>
       </div>
-      <div class="control-grid">
+      <section class="card"><label for="manualDevkitIP">DevKit Wi-Fi IP (from Serial W)</label>
+<input id="manualDevkitIP" placeholder="192.168.0.xxx" autocomplete="off">
+<button id="openManualController" class="button" type="button">Open private LAN controller</button>
+<p id="manualLinkNote">Opens a separate local page. Control token is entered there, never stored in this website or Firebase. Do not tunnel port 8080 publicly.</p></section>
+<div class="control-grid">
         <article class="card control-card">
           <div class="card-head"><div><p class="eyebrow">KEYBOARD LAYOUT</p><h2>WASD drive</h2></div><span class="tag yellow">PREVIEW</span></div>
           <div class="keypad" aria-label="WASD control preview">
@@ -245,6 +249,6 @@
     <footer>MagmaFusion · Firebase-authenticated telemetry · private camera relay · remote controls pending firmware integration</footer>
   </main>
 </div>
-<script type="module" src="./app.js?v=9"></script>
+<script type="module" src="./app.js?v=10"></script>
 </body>
 </html>
